@@ -1175,6 +1175,9 @@ class TerminalCard extends Card {
           if (msg.session_id) {
             this.sessionId = msg.session_id;
             saveLayout();
+            if (msg.tmux === false && this.container) {
+              this.term.write('\r\n\x1b[33m⚠ tmux not available in container — terminal will not persist across server restarts. Install tmux in the container to enable persistence.\x1b[0m\r\n');
+            }
           }
           if (msg.error === 'session_not_found') {
             this.sessionId = null;

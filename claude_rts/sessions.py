@@ -85,6 +85,7 @@ class Session:
     clients: set = field(default_factory=set)
     read_task: Optional[asyncio.Task] = None
     alive: bool = True
+    tmux_backed: bool = False
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -124,7 +125,8 @@ class SessionManager:
             logger.warning("Invalid container name rejected: {!r}", container)
             container = None
 
-        if container and self.tmux_enabled and self._tmux_cache.get(container):
+        use_tmux = bool(container and self.tmux_enabled and self._tmux_cache.get(container))
+        if use_tmux:
             spawn_cmd = f'docker.exe exec -it {container} tmux new-session -As {session_id}'
             logger.info("Using tmux persistence: {}", spawn_cmd)
         else:
@@ -139,6 +141,7 @@ class SessionManager:
             container=container,
             pty=pty,
             scrollback=ScrollbackBuffer(self.scrollback_size),
+            tmux_backed=use_tmux,
         )
         session.read_task = asyncio.create_task(self._pty_read_loop(session))
         self._sessions[session_id] = session
@@ -351,6 +354,7 @@ class SessionManager:
                     container=container,
                     pty=pty,
                     scrollback=ScrollbackBuffer(self.scrollback_size),
+                    tmux_backed=True,
                 )
 
                 # Seed scrollback from tmux history

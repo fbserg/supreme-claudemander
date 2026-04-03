@@ -391,7 +391,7 @@ async def session_new_handler(request: web.Request) -> web.WebSocketResponse:
         await ws.close()
         return ws
 
-    await ws.send_str(json.dumps({"session_id": session.session_id}))
+    await ws.send_str(json.dumps({"session_id": session.session_id, "tmux": session.tmux_backed}))
     await mgr.attach(session.session_id, ws)
 
     # Send resize if client sends it as first message
