@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>claude-rts</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    font-family: system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+  }
+
+  #status-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 32px;
+    background: #181825;
+    border-bottom: 1px solid #313244;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 13px;
+    z-index: 1000;
+    gap: 16px;
+  }
+  #status-bar .title { font-weight: 600; color: #cba6f7; }
+  #status-bar .hub-count { color: #a6adc8; }
+
+  #terminal-container {
+    position: fixed;
+    top: 32px; left: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .terminal-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    max-width: 1200px;
+    max-height: 800px;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #1e1e2e;
+  }
+
+  .terminal-titlebar {
+    height: 32px;
+    background: #313244;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 500;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .terminal-titlebar .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #a6e3a1;
+  }
+  .terminal-titlebar .dot.disconnected { background: #f38ba8; }
+  .terminal-titlebar .dot.connecting { background: #f9e2af; }
+  .terminal-titlebar .hub-name { color: #cdd6f4; }
+
+  .terminal-body {
+    flex: 1;
+    padding: 4px;
+    min-height: 0;
+  }
+  .terminal-body .xterm { height: 100%; }
+</style>
+</head>
+<body>
+
+<div id="status-bar">
+  <span class="title">claude-rts</span>
+  <span class="hub-count" id="hub-count">connecting...</span>
+</div>
+
+<div id="terminal-container">
+  <!-- Terminal card inserted here by JS -->
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
+<script>
+(async function() {
+  // Fetch available hubs
+  const resp = await fetch('/api/hubs');
+  const hubs = await resp.json();
+
+  if (hubs.length === 0) {
+    document.getElementById('hub-count').textContent = 'No containers running';
+    return;
+  }
+
+  // M0: connect to the first hub only
+  const hub = hubs[0];
+  document.getElementById('hub-count').textContent = `${hubs.length} hub(s) found \u2014 connected to ${hub.hub}`;
+
+  // Create terminal card
+  const container = document.getElementById('terminal-container');
+  const card = document.createElement('div');
+  card.className = 'terminal-card';
+  card.innerHTML = `
+    <div class="terminal-titlebar">
+      <span class="dot connecting" id="status-dot"></span>
+      <span class="hub-name">${hub.hub}</span>
+      <span style="color:#585b70; margin-left:4px">(${hub.container})</span>
+    </div>
+    <div class="terminal-body" id="term-body"></div>
+  `;
+  container.appendChild(card);
+
+  // Initialize xterm.js
+  const term = new window.Terminal({
+    cursorBlink: true,
+    fontSize: 14,
+    fontFamily: '"JetBrains Mono", "Cascadia Code", "Consolas", monospace',
+    theme: {
+      background: '#1e1e2e',
+      foreground: '#cdd6f4',
+      cursor: '#f5e0dc',
+      selectionBackground: '#585b7066',
+      black: '#45475a',
+      red: '#f38ba8',
+      green: '#a6e3a1',
+      yellow: '#f9e2af',
+      blue: '#89b4fa',
+      magenta: '#cba6f7',
+      cyan: '#94e2d5',
+      white: '#bac2de',
+      brightBlack: '#585b70',
+      brightRed: '#f38ba8',
+      brightGreen: '#a6e3a1',
+      brightYellow: '#f9e2af',
+      brightBlue: '#89b4fa',
+      brightMagenta: '#cba6f7',
+      brightCyan: '#94e2d5',
+      brightWhite: '#a6adc8',
+    },
+  });
+
+  const fitAddon = new window.FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  if (window.WebLinksAddon) {
+    term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+  }
+  term.open(document.getElementById('term-body'));
+  fitAddon.fit();
+
+  // Copy/paste: Ctrl+Shift+C to copy, Ctrl+Shift+V to paste, right-click to paste
+  term.attachCustomKeyEventHandler((ev) => {
+    if (ev.type === 'keydown' && ev.ctrlKey && ev.shiftKey && ev.key === 'C') {
+      const sel = term.getSelection();
+      if (sel) navigator.clipboard.writeText(sel);
+      return false; // prevent sending to shell
+    }
+    if (ev.type === 'keydown' && ev.ctrlKey && ev.shiftKey && ev.key === 'V') {
+      navigator.clipboard.readText().then(text => {
+        if (text && ws.readyState === WebSocket.OPEN) {
+          ws.send(new TextEncoder().encode(text));
+        }
+      });
+      return false;
+    }
+    return true;
+  });
+
+  // Right-click paste
+  document.getElementById('term-body').addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    navigator.clipboard.readText().then(text => {
+      if (text && ws.readyState === WebSocket.OPEN) {
+        ws.send(new TextEncoder().encode(text));
+      }
+    });
+  });
+
+  // Connect WebSocket
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${wsProto}//${location.host}/ws/${hub.hub}`);
+  ws.binaryType = 'arraybuffer';
+
+  const dot = document.getElementById('status-dot');
+
+  ws.addEventListener('open', () => {
+    dot.className = 'dot';
+    // Send initial size
+    ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+  });
+
+  ws.addEventListener('message', (event) => {
+    if (event.data instanceof ArrayBuffer) {
+      term.write(new Uint8Array(event.data));
+    }
+  });
+
+  ws.addEventListener('close', () => {
+    dot.className = 'dot disconnected';
+    term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n');
+  });
+
+  ws.addEventListener('error', () => {
+    dot.className = 'dot disconnected';
+  });
+
+  // Send keystrokes to server
+  term.onData((data) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(new TextEncoder().encode(data));
+    }
+  });
+
+  // Handle resize
+  const resizeObserver = new ResizeObserver(() => {
+    fitAddon.fit();
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    }
+  });
+  resizeObserver.observe(document.getElementById('term-body'));
+})();
+</script>
+</body>
+</html>
