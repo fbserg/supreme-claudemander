@@ -85,11 +85,10 @@
     cursor: move;
     user-select: none;
   }
-  .terminal-titlebar .dot {
-    width: 8px; height: 8px; border-radius: 50%; background: #a6e3a1; flex-shrink: 0;
+  .terminal-titlebar .hub-symbol {
+    font-size: 13px; font-weight: 700; flex-shrink: 0;
+    width: 20px; text-align: center; font-family: monospace;
   }
-  .terminal-titlebar .dot.disconnected { background: #f38ba8; }
-  .terminal-titlebar .dot.connecting { background: #f9e2af; }
   .terminal-titlebar .hub-name { color: #cdd6f4; }
   .terminal-titlebar .container-name { color: #585b70; font-size: 11px; }
   .terminal-titlebar .spacer { flex: 1; }
@@ -168,8 +167,9 @@
     gap: 8px;
   }
   .ctx-item:hover { background: #313244; }
-  .ctx-item .dot-preview {
-    width: 8px; height: 8px; border-radius: 50%;
+  .ctx-item .symbol-preview {
+    font-weight: 700; font-family: monospace; font-size: 13px;
+    width: 16px; text-align: center; color: #cdd6f4;
   }
 </style>
 </head>
@@ -206,15 +206,25 @@ const CARD_W = 720;
 const CARD_H = 480;
 const CARD_GAP = 40;
 
-// Hub colors for minimap dots and card accents
-const HUB_COLORS = ['#f38ba8','#fab387','#f9e2af','#a6e3a1','#89b4fa','#cba6f7','#94e2d5','#f5c2e7'];
+// Hub symbols: each hub gets a unique letter
+const HUB_SYMBOLS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+// State colors
+const STATE_COLORS = {
+  working: '#a6e3a1',      // green — stdout activity in last N seconds
+  idle: '#f9e2af',         // yellow — no recent output, process alive
+  dead: '#f38ba8',         // red — disconnected or process exited
+  connecting: '#585b70',   // gray — initial connection
+};
+const IDLE_THRESHOLD_MS = 5000; // seconds of no output before "idle"
 
 // ════════════════════════════════════════════
 // State
 // ════════════════════════════════════════════
-let cards = [];         // {id, hub, container, el, term, fitAddon, ws, x, y, w, h, color}
+let cards = [];         // {id, hub, container, el, term, fitAddon, ws, x, y, w, h, symbol, state, lastOutput}
 let nextCardId = 0;
 let hubs = [];          // from /api/hubs
+let hubSymbolMap = {};  // hub name -> symbol
 let pan = { x: 0, y: 0 };
 let zoom = 1;
 let isPanning = false;
@@ -321,18 +331,20 @@ function drawMinimap() {
   mmCtx.fillStyle = '#181825';
   mmCtx.fillRect(0, 0, mw, mh);
 
-  // Card dots
+  // Card symbols
   for (const c of cards) {
     const cx = c.x * scaleX + (c.w * scaleX) / 2;
     const cy = c.y * scaleY + (c.h * scaleY) / 2;
+    const stateColor = STATE_COLORS[c.state] || STATE_COLORS.connecting;
     // Card rect
-    mmCtx.fillStyle = c.color + '40';
+    mmCtx.fillStyle = stateColor + '25';
     mmCtx.fillRect(c.x * scaleX, c.y * scaleY, c.w * scaleX, c.h * scaleY);
-    // Dot
-    mmCtx.beginPath();
-    mmCtx.arc(cx, cy, 4, 0, Math.PI * 2);
-    mmCtx.fillStyle = c.color;
-    mmCtx.fill();
+    // Symbol
+    mmCtx.font = 'bold 10px monospace';
+    mmCtx.textAlign = 'center';
+    mmCtx.textBaseline = 'middle';
+    mmCtx.fillStyle = stateColor;
+    mmCtx.fillText(c.symbol, cx, cy);
   }
 
   // Viewport rect
@@ -382,9 +394,9 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideContex
 function showContextMenu(sx, sy) {
   let html = '<div class="ctx-header">Spawn terminal</div>';
   hubs.forEach((h, i) => {
-    const color = HUB_COLORS[i % HUB_COLORS.length];
+    const sym = hubSymbolMap[h.hub] || '?';
     html += `<div class="ctx-item" data-hub="${h.hub}">
-      <span class="dot-preview" style="background:${color}"></span>
+      <span class="symbol-preview">${sym}</span>
       ${h.hub} <span style="color:#585b70;font-size:11px">(${h.container})</span>
     </div>`;
   });
@@ -431,14 +443,36 @@ const TERM_THEME = {
 };
 
 // ════════════════════════════════════════════
+// Terminal state management
+// ════════════════════════════════════════════
+function updateCardState(id, state) {
+  const card = cards.find(c => c.id === id);
+  if (!card) return;
+  card.state = state;
+  if (state === 'working') card.lastOutput = Date.now();
+  const symbolEl = card.el.querySelector(`[data-symbol="${id}"]`);
+  if (symbolEl) symbolEl.style.color = STATE_COLORS[state] || STATE_COLORS.connecting;
+  drawMinimap();
+}
+
+// Periodic check: transition "working" → "idle" after IDLE_THRESHOLD_MS of no output
+setInterval(() => {
+  const now = Date.now();
+  for (const c of cards) {
+    if (c.state === 'working' && (now - c.lastOutput) > IDLE_THRESHOLD_MS) {
+      updateCardState(c.id, 'idle');
+    }
+  }
+}, 1000);
+
+// ════════════════════════════════════════════
 // Spawn a terminal card
 // ════════════════════════════════════════════
 function spawnCard(hub, x, y, w, h) {
   w = w || CARD_W;
   h = h || CARD_H;
   const id = nextCardId++;
-  const colorIdx = cards.filter(c => c.hub === hub.hub).length;
-  const color = HUB_COLORS[hubs.findIndex(hh => hh.hub === hub.hub) % HUB_COLORS.length];
+  const symbol = hubSymbolMap[hub.hub] || '?';
 
   const el = document.createElement('div');
   el.className = 'terminal-card';
@@ -452,7 +486,7 @@ function spawnCard(hub, x, y, w, h) {
   const copyLabel = cards.filter(c => c.hub === hub.hub).length;
   el.innerHTML = `
     <div class="terminal-titlebar" data-drag="${id}">
-      <span class="dot connecting" data-dot="${id}"></span>
+      <span class="hub-symbol" data-symbol="${id}" style="color:${STATE_COLORS.connecting}">${symbol}</span>
       <span class="hub-name">${hub.hub}</span>
       ${copyLabel > 0 ? `<span style="color:#585b70;font-size:11px">#${copyLabel + 1}</span>` : ''}
       <span class="container-name">${hub.container}</span>
@@ -462,7 +496,6 @@ function spawnCard(hub, x, y, w, h) {
     <div class="terminal-body" data-body="${id}"></div>
     <div class="resize-handle" data-resize="${id}"></div>
   `;
-  el.style.borderTopColor = color;
   canvas.appendChild(el);
 
   // Focus on click
@@ -497,20 +530,24 @@ function spawnCard(hub, x, y, w, h) {
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${wsProto}//${location.host}/ws/${hub.hub}`);
   ws.binaryType = 'arraybuffer';
-  const dot = el.querySelector(`[data-dot="${id}"]`);
+  const symbolEl = el.querySelector(`[data-symbol="${id}"]`);
 
   ws.addEventListener('open', () => {
-    dot.className = 'dot';
+    updateCardState(id, 'idle');
     ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
   });
   ws.addEventListener('message', (ev) => {
-    if (ev.data instanceof ArrayBuffer) term.write(new Uint8Array(ev.data));
+    if (ev.data instanceof ArrayBuffer) {
+      term.write(new Uint8Array(ev.data));
+      // Mark as working on any output
+      updateCardState(id, 'working');
+    }
   });
   ws.addEventListener('close', () => {
-    dot.className = 'dot disconnected';
+    updateCardState(id, 'dead');
     term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n');
   });
-  ws.addEventListener('error', () => { dot.className = 'dot disconnected'; });
+  ws.addEventListener('error', () => { updateCardState(id, 'dead'); });
 
   term.onData((data) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data));
@@ -541,7 +578,7 @@ function spawnCard(hub, x, y, w, h) {
   });
   ro.observe(body);
 
-  const card = { id, hub: hub.hub, container: hub.container, el, term, fitAddon, ws, x, y, w, h, color, ro };
+  const card = { id, hub: hub.hub, container: hub.container, el, term, fitAddon, ws, x, y, w, h, symbol, state: 'connecting', lastOutput: 0, ro };
   cards.push(card);
 
   // ── Drag (title bar) ──
@@ -664,6 +701,11 @@ function layoutGrid(hubList) {
     document.getElementById('hub-count').textContent = 'No containers running';
     return;
   }
+
+  // Assign symbols to hubs
+  hubs.forEach((h, i) => {
+    hubSymbolMap[h.hub] = HUB_SYMBOLS[i % HUB_SYMBOLS.length];
+  });
 
   layoutGrid(hubs);
 
