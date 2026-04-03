@@ -243,12 +243,20 @@ async def probe_usage(claude_dir: str, timeout: float = 60) -> dict | None:
     if not await is_util_running():
         return None
 
-    # script -qc allocates a PTY so pexpect works inside docker exec
+    # Write a temp probe script to disk, docker cp it in, then execute.
+    # This avoids Windows -> docker -> bash quoting nightmares.
     inner_timeout = max(timeout - 5, 10)
-    cmd = (
-        f'docker.exe exec {cfg["name"]} bash -c '
-        f'"script -qc \'timeout {inner_timeout} claude-usage --claude-dir {claude_dir} --json\' /dev/null 2>/dev/null"'
-    )
+    import tempfile
+    script_content = f"#!/bin/bash\nscript -qc 'timeout {inner_timeout} claude-usage --claude-dir {claude_dir} --json' /dev/null 2>/dev/null\n"
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False, newline='\n') as f:
+        f.write(script_content)
+        tmp_path = f.name
+    try:
+        await _run(f'docker.exe cp "{tmp_path}" {cfg["name"]}:/tmp/_probe.sh', timeout=5)
+        cmd = f'docker.exe exec {cfg["name"]} bash /tmp/_probe.sh'
+    finally:
+        import os
+        os.unlink(tmp_path)
     logger.debug("probe_usage: {}", cmd)
     rc, stdout, stderr = await _run(cmd, timeout=timeout)
 
