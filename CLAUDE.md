@@ -69,4 +69,4 @@ Terminal data (stdout bytes) is intentionally NOT logged.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for milestones. Current status: M0 (single terminal proof of concept).
+See [ROADMAP.md](ROADMAP.md) for milestones. M0–M4 are complete.
