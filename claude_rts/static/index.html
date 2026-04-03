@@ -171,6 +171,63 @@
     font-weight: 700; font-family: monospace; font-size: 13px;
     width: 16px; text-align: center; color: #cdd6f4;
   }
+
+  /* ── Settings panel ── */
+  #settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 3000;
+  }
+  #settings-overlay.visible { display: flex; align-items: center; justify-content: center; }
+
+  #settings-panel {
+    background: #1e1e2e;
+    border: 1px solid #45475a;
+    border-radius: 10px;
+    width: 480px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  }
+  #settings-panel h2 {
+    font-size: 16px; font-weight: 600; color: #cba6f7;
+    padding: 16px 20px 12px; margin: 0;
+    border-bottom: 1px solid #313244;
+  }
+  .settings-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid #313244;
+  }
+  .settings-section:last-child { border-bottom: none; }
+  .settings-section h3 {
+    font-size: 13px; font-weight: 600; color: #a6adc8;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+  .setting-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0; font-size: 13px;
+  }
+  .setting-row label { color: #cdd6f4; }
+  .setting-row select {
+    background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+    border-radius: 4px; padding: 4px 8px; font-size: 12px;
+  }
+  .setting-row select:focus { outline: 1px solid #cba6f7; }
+  .settings-footer {
+    padding: 12px 20px;
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  .settings-footer button {
+    padding: 6px 16px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    border: 1px solid #45475a;
+  }
+  .settings-footer .btn-close { background: #313244; color: #cdd6f4; }
+  .settings-footer .btn-close:hover { background: #45475a; }
+  .settings-footer .btn-reset { background: transparent; color: #f38ba8; border-color: #f38ba8; }
+  .settings-footer .btn-reset:hover { background: #f38ba822; }
 </style>
 </head>
 <body>
@@ -181,6 +238,58 @@
   <span class="info" id="zoom-level"></span>
   <div style="flex:1"></div>
   <button class="btn" id="btn-fit">Fit all</button>
+  <button class="btn" id="btn-settings" title="Settings">&#9881;</button>
+</div>
+
+<div id="settings-overlay">
+  <div id="settings-panel">
+    <h2>Settings</h2>
+    <div class="settings-section">
+      <h3>Copy</h3>
+      <div class="setting-row">
+        <label>Copy shortcut</label>
+        <select id="setting-copy">
+          <option value="ctrl-shift-c">Ctrl+Shift+C</option>
+          <option value="ctrl-c-sel">Ctrl+C (when text selected)</option>
+          <option value="auto-select">Auto-copy on select</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3>Paste</h3>
+      <div class="setting-row">
+        <label>Paste shortcut</label>
+        <select id="setting-paste">
+          <option value="ctrl-shift-v">Ctrl+Shift+V</option>
+          <option value="ctrl-v">Ctrl+V</option>
+          <option value="both">Both Ctrl+V and Ctrl+Shift+V</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Right-click on terminal</label>
+        <select id="setting-rightclick">
+          <option value="paste">Paste from clipboard</option>
+          <option value="none">Do nothing</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3>Terminal</h3>
+      <div class="setting-row">
+        <label>Idle threshold (seconds)</label>
+        <select id="setting-idle">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="10">10</option>
+          <option value="30">30</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-footer">
+      <button class="btn-reset" id="btn-reset-settings">Reset defaults</button>
+      <button class="btn-close" id="btn-close-settings">Close</button>
+    </div>
+  </div>
 </div>
 
 <div id="viewport">
@@ -216,7 +325,7 @@ const STATE_COLORS = {
   dead: '#f38ba8',         // red — disconnected or process exited
   connecting: '#585b70',   // gray — initial connection
 };
-const IDLE_THRESHOLD_MS = 5000; // seconds of no output before "idle"
+let IDLE_THRESHOLD_MS = 5000; // updated by settings
 
 // ════════════════════════════════════════════
 // State
@@ -505,9 +614,15 @@ function spawnCard(hub, x, y, w, h) {
 
   // Focus on click
   el.addEventListener('pointerdown', (e) => {
-    // Don't steal focus from xterm
     focusCard(id);
     el.style.zIndex = ++maxZ;
+  });
+
+  // Double-click anywhere on card to zoom-to-fill
+  el.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.close-btn')) return;
+    const card = cards.find(c => c.id === id);
+    if (card) zoomToCard(card);
   });
 
   // Close button
@@ -576,20 +691,53 @@ function spawnCard(hub, x, y, w, h) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data));
   });
 
-  // Copy/paste
+  // Copy/paste (respects settings)
+  function doPaste() {
+    navigator.clipboard.readText().then(text => {
+      if (text && ws && ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(text));
+    });
+  }
+
   term.attachCustomKeyEventHandler((ev) => {
-    if (ev.type === 'keydown' && ev.ctrlKey && ev.shiftKey && ev.key === 'C') {
+    if (ev.type !== 'keydown') return true;
+
+    // Copy
+    if (ev.ctrlKey && ev.shiftKey && ev.key === 'C') {
       const sel = term.getSelection();
       if (sel) navigator.clipboard.writeText(sel);
       return false;
     }
-    if (ev.type === 'keydown' && ev.ctrlKey && ev.shiftKey && ev.key === 'V') {
-      navigator.clipboard.readText().then(text => {
-        if (text && ws && ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(text));
-      });
-      return false;
+    if (settings.copy === 'ctrl-c-sel' && ev.ctrlKey && !ev.shiftKey && ev.key === 'c') {
+      const sel = term.getSelection();
+      if (sel && sel.length > 0) {
+        navigator.clipboard.writeText(sel);
+        return false; // intercept Ctrl+C only when there's a selection
+      }
     }
+
+    // Paste
+    if (ev.ctrlKey && ev.shiftKey && ev.key === 'V') {
+      if (settings.paste === 'ctrl-shift-v' || settings.paste === 'both') { doPaste(); return false; }
+    }
+    if (ev.ctrlKey && !ev.shiftKey && ev.key === 'v') {
+      if (settings.paste === 'ctrl-v' || settings.paste === 'both') { doPaste(); return false; }
+    }
+
     return true;
+  });
+
+  // Auto-copy on select
+  term.onSelectionChange(() => {
+    if (settings.copy === 'auto-select') {
+      const sel = term.getSelection();
+      if (sel) navigator.clipboard.writeText(sel);
+    }
+  });
+
+  // Right-click on terminal body
+  body.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    if (settings.rightclick === 'paste') doPaste();
   });
 
   // Resize observer for xterm fit
@@ -656,12 +804,6 @@ function setupDrag(card) {
   const titlebar = card.el.querySelector(`[data-drag="${card.id}"]`);
   let dragging = false;
   let startX, startY, origX, origY;
-
-  // Double-click title bar to zoom-to-fill
-  titlebar.addEventListener('dblclick', (e) => {
-    if (e.target.closest('.close-btn')) return;
-    zoomToCard(card);
-  });
 
   titlebar.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.close-btn')) return;
@@ -731,6 +873,73 @@ function layoutGrid(hubList) {
     spawnCard(hub, x, y);
   });
 }
+
+// ════════════════════════════════════════════
+// Settings
+// ════════════════════════════════════════════
+const SETTINGS_KEY = 'claude-rts-settings';
+const DEFAULT_SETTINGS = {
+  copy: 'ctrl-shift-c',
+  paste: 'ctrl-shift-v',
+  rightclick: 'paste',
+  idle: 5,
+};
+let settings = { ...DEFAULT_SETTINGS };
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) Object.assign(settings, JSON.parse(raw));
+  } catch {}
+  applySettingsToUI();
+  applySettingsToState();
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  applySettingsToState();
+}
+
+function applySettingsToUI() {
+  document.getElementById('setting-copy').value = settings.copy;
+  document.getElementById('setting-paste').value = settings.paste;
+  document.getElementById('setting-rightclick').value = settings.rightclick;
+  document.getElementById('setting-idle').value = String(settings.idle);
+}
+
+function applySettingsToState() {
+  IDLE_THRESHOLD_MS = settings.idle * 1000;
+}
+
+function resetSettings() {
+  settings = { ...DEFAULT_SETTINGS };
+  saveSettings();
+  applySettingsToUI();
+}
+
+// Settings panel open/close
+const settingsOverlay = document.getElementById('settings-overlay');
+document.getElementById('btn-settings').addEventListener('click', () => {
+  settingsOverlay.classList.add('visible');
+});
+document.getElementById('btn-close-settings').addEventListener('click', () => {
+  settingsOverlay.classList.remove('visible');
+});
+document.getElementById('btn-reset-settings').addEventListener('click', resetSettings);
+settingsOverlay.addEventListener('click', (e) => {
+  if (e.target === settingsOverlay) settingsOverlay.classList.remove('visible');
+});
+
+// Live-update settings on change
+for (const sel of ['setting-copy', 'setting-paste', 'setting-rightclick', 'setting-idle']) {
+  document.getElementById(sel).addEventListener('change', (e) => {
+    const key = sel.replace('setting-', '');
+    settings[key] = key === 'idle' ? parseInt(e.target.value) : e.target.value;
+    saveSettings();
+  });
+}
+
+loadSettings();
 
 // ════════════════════════════════════════════
 // Keyboard shortcuts
