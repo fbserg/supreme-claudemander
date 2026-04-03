@@ -379,10 +379,17 @@ viewport.addEventListener('dblclick', (e) => {
 });
 
 viewport.addEventListener('pointerdown', (e) => {
-  if (e.target !== viewport && e.target !== canvas) return;
+  // Right-click can pan from anywhere (including over terminal cards)
   if (e.button === 2) {
     rightClickStart = { x: e.clientX, y: e.clientY };
+    isPanning = true;
+    viewport.classList.add('panning');
+    panStart = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    viewport.setPointerCapture(e.pointerId);
+    return;
   }
+  // Left-click pan only on empty canvas
+  if (e.target !== viewport && e.target !== canvas) return;
   isPanning = true;
   viewport.classList.add('panning');
   panStart = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
@@ -769,6 +776,13 @@ function spawnCard(hub, x, y, w, h) {
   // Right-click on terminal body
   body.addEventListener('contextmenu', (ev) => {
     ev.preventDefault();
+    // Only paste on stationary right-click, not after a right-click-drag pan
+    if (rightClickStart) {
+      const dx = ev.clientX - rightClickStart.x;
+      const dy = ev.clientY - rightClickStart.y;
+      rightClickStart = null;
+      if (Math.sqrt(dx * dx + dy * dy) > 5) return;
+    }
     if (settings.rightclick === 'paste') doPaste();
   });
 
