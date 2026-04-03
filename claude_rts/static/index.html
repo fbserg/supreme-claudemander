@@ -52,9 +52,13 @@
     width: 3840px;
     height: 2160px;
     transform-origin: 0 0;
-    background:
-      radial-gradient(circle, #181825 1px, transparent 1px);
-    background-size: 40px 40px;
+    background-color: #141422;
+    background-image:
+      linear-gradient(rgba(69, 71, 90, 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(69, 71, 90, 0.3) 1px, transparent 1px),
+      linear-gradient(rgba(69, 71, 90, 0.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(69, 71, 90, 0.12) 1px, transparent 1px);
+    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
   }
 
   /* ── Terminal card ── */
@@ -276,6 +280,12 @@
     <div class="settings-section">
       <h3>Terminal</h3>
       <div class="setting-row">
+        <label>Scroll wheel behavior</label>
+        <select id="setting-scrollMode" disabled>
+          <option value="auto">Scroll terminal, Ctrl to zoom</option>
+        </select>
+      </div>
+      <div class="setting-row">
         <label>Idle threshold (seconds)</label>
         <select id="setting-idle">
           <option value="3">3</option>
@@ -306,6 +316,11 @@
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
 <script>
+// ════════════════════════════════════════════
+// Global: suppress browser default context menu everywhere
+// ════════════════════════════════════════════
+document.addEventListener('contextmenu', e => e.preventDefault());
+
 // ════════════════════════════════════════════
 // Constants
 // ════════════════════════════════════════════
@@ -338,6 +353,7 @@ let pan = { x: 0, y: 0 };
 let zoom = 1;
 let isPanning = false;
 let panStart = { x: 0, y: 0, panX: 0, panY: 0 };
+let rightClickStart = null; // {x, y} — tracks right-click origin for drag threshold
 let focusedCardId = null;
 let maxZ = 10;
 
@@ -364,6 +380,9 @@ viewport.addEventListener('dblclick', (e) => {
 
 viewport.addEventListener('pointerdown', (e) => {
   if (e.target !== viewport && e.target !== canvas) return;
+  if (e.button === 2) {
+    rightClickStart = { x: e.clientX, y: e.clientY };
+  }
   isPanning = true;
   viewport.classList.add('panning');
   panStart = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
@@ -384,6 +403,12 @@ viewport.addEventListener('pointerup', () => {
 // Zoom (wheel, cursor-centered)
 // ════════════════════════════════════════════
 viewport.addEventListener('wheel', (e) => {
+  // Scroll over terminal = scroll terminal; Ctrl+scroll = zoom canvas
+  const overTerminal = e.target.closest('.terminal-card');
+  if (overTerminal && !e.ctrlKey) {
+    return; // let xterm.js handle the scroll event
+  }
+
   e.preventDefault();
   const rect = viewport.getBoundingClientRect();
   const mx = e.clientX - rect.left;
@@ -498,6 +523,13 @@ viewport.addEventListener('contextmenu', (e) => {
   // Only show on empty canvas, not on terminal cards
   if (e.target !== viewport && e.target !== canvas) return;
   e.preventDefault();
+  // Suppress menu if user right-click-dragged (panned) beyond threshold
+  if (rightClickStart) {
+    const dx = e.clientX - rightClickStart.x;
+    const dy = e.clientY - rightClickStart.y;
+    rightClickStart = null;
+    if (Math.sqrt(dx * dx + dy * dy) > 5) return;
+  }
   ctxMenuCanvasPos = screenToCanvas(e.clientX, e.clientY);
   showContextMenu(e.clientX, e.clientY);
 });
@@ -767,6 +799,8 @@ function destroyCard(id) {
   if (idx === -1) return;
   const card = cards[idx];
   card.ro.disconnect();
+  if (card._cancelDrag) card._cancelDrag();
+  if (card._cancelResize) card._cancelResize();
   if (card._cleanup) card._cleanup();
   if (card.ws && card.ws.readyState === WebSocket.OPEN) card.ws.close();
   card.term.dispose();
@@ -802,28 +836,37 @@ function zoomToCard(card) {
 
 function setupDrag(card) {
   const titlebar = card.el.querySelector(`[data-drag="${card.id}"]`);
-  let dragging = false;
   let startX, startY, origX, origY;
 
-  titlebar.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.close-btn')) return;
-    dragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    origX = card.x;
-    origY = card.y;
-    titlebar.setPointerCapture(e.pointerId);
-    e.stopPropagation(); // don't trigger canvas pan
-  });
-  titlebar.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
+  function onMove(e) {
     card.x = origX + (e.clientX - startX) / zoom;
     card.y = origY + (e.clientY - startY) / zoom;
     card.el.style.left = card.x + 'px';
     card.el.style.top = card.y + 'px';
     drawMinimap();
+  }
+  function onUp() {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    saveLayout();
+  }
+
+  titlebar.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.close-btn')) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    origX = card.x;
+    origY = card.y;
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    e.preventDefault();
+    e.stopPropagation();
   });
-  titlebar.addEventListener('pointerup', () => { dragging = false; saveLayout(); });
+
+  card._cancelDrag = () => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+  };
 }
 
 // ════════════════════════════════════════════
@@ -831,27 +874,36 @@ function setupDrag(card) {
 // ════════════════════════════════════════════
 function setupResize(card) {
   const handle = card.el.querySelector(`[data-resize="${card.id}"]`);
-  let resizing = false;
   let startX, startY, origW, origH;
 
-  handle.addEventListener('pointerdown', (e) => {
-    resizing = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    origW = card.w;
-    origH = card.h;
-    handle.setPointerCapture(e.pointerId);
-    e.stopPropagation();
-  });
-  handle.addEventListener('pointermove', (e) => {
-    if (!resizing) return;
+  function onMove(e) {
     card.w = Math.max(300, origW + (e.clientX - startX) / zoom);
     card.h = Math.max(200, origH + (e.clientY - startY) / zoom);
     card.el.style.width = card.w + 'px';
     card.el.style.height = card.h + 'px';
     drawMinimap();
+  }
+  function onUp() {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    saveLayout();
+  }
+
+  handle.addEventListener('pointerdown', (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    origW = card.w;
+    origH = card.h;
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    e.preventDefault();
+    e.stopPropagation();
   });
-  handle.addEventListener('pointerup', () => { resizing = false; saveLayout(); });
+
+  card._cancelResize = () => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+  };
 }
 
 // ════════════════════════════════════════════
