@@ -248,6 +248,11 @@ function applyTransform() {
 // ════════════════════════════════════════════
 // Pan (drag empty canvas)
 // ════════════════════════════════════════════
+viewport.addEventListener('dblclick', (e) => {
+  if (e.target !== viewport && e.target !== canvas) return;
+  fitAll();
+});
+
 viewport.addEventListener('pointerdown', (e) => {
   if (e.target !== viewport && e.target !== canvas) return;
   isPanning = true;
@@ -526,31 +531,49 @@ function spawnCard(hub, x, y, w, h) {
   term.open(body);
   fitAddon.fit();
 
-  // WebSocket
-  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${wsProto}//${location.host}/ws/${hub.hub}`);
-  ws.binaryType = 'arraybuffer';
-  const symbolEl = el.querySelector(`[data-symbol="${id}"]`);
+  // WebSocket with auto-reconnect
+  let ws = null;
+  let reconnectDelay = 1000;
+  let reconnectTimer = null;
+  let intentionalClose = false;
 
-  ws.addEventListener('open', () => {
-    updateCardState(id, 'idle');
-    ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-  });
-  ws.addEventListener('message', (ev) => {
-    if (ev.data instanceof ArrayBuffer) {
-      term.write(new Uint8Array(ev.data));
-      // Mark as working on any output
-      updateCardState(id, 'working');
-    }
-  });
-  ws.addEventListener('close', () => {
-    updateCardState(id, 'dead');
-    term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n');
-  });
-  ws.addEventListener('error', () => { updateCardState(id, 'dead'); });
+  function connectWs() {
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${wsProto}//${location.host}/ws/${hub.hub}`);
+    ws.binaryType = 'arraybuffer';
+    // Update card ref
+    const card = cards.find(c => c.id === id);
+    if (card) card.ws = ws;
+
+    ws.addEventListener('open', () => {
+      reconnectDelay = 1000; // reset backoff
+      updateCardState(id, 'idle');
+      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    });
+    ws.addEventListener('message', (ev) => {
+      if (ev.data instanceof ArrayBuffer) {
+        term.write(new Uint8Array(ev.data));
+        updateCardState(id, 'working');
+      }
+    });
+    ws.addEventListener('close', () => {
+      updateCardState(id, 'dead');
+      if (!intentionalClose) {
+        term.write('\r\n\x1b[33m[reconnecting...]\x1b[0m\r\n');
+        reconnectTimer = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+          connectWs();
+        }, reconnectDelay);
+      } else {
+        term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n');
+      }
+    });
+    ws.addEventListener('error', () => { updateCardState(id, 'dead'); });
+  }
+  connectWs();
 
   term.onData((data) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data));
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data));
   });
 
   // Copy/paste
@@ -562,7 +585,7 @@ function spawnCard(hub, x, y, w, h) {
     }
     if (ev.type === 'keydown' && ev.ctrlKey && ev.shiftKey && ev.key === 'V') {
       navigator.clipboard.readText().then(text => {
-        if (text && ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(text));
+        if (text && ws && ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(text));
       });
       return false;
     }
@@ -572,13 +595,13 @@ function spawnCard(hub, x, y, w, h) {
   // Resize observer for xterm fit
   const ro = new ResizeObserver(() => {
     fitAddon.fit();
-    if (ws.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
     }
   });
   ro.observe(body);
 
-  const card = { id, hub: hub.hub, container: hub.container, el, term, fitAddon, ws, x, y, w, h, symbol, state: 'connecting', lastOutput: 0, ro };
+  const card = { id, hub: hub.hub, container: hub.container, el, term, fitAddon, ws, x, y, w, h, symbol, state: 'connecting', lastOutput: 0, ro, _cleanup: () => { intentionalClose = true; if (reconnectTimer) clearTimeout(reconnectTimer); } };
   cards.push(card);
 
   // ── Drag (title bar) ──
@@ -596,10 +619,12 @@ function destroyCard(id) {
   if (idx === -1) return;
   const card = cards[idx];
   card.ro.disconnect();
-  if (card.ws.readyState === WebSocket.OPEN) card.ws.close();
+  if (card._cleanup) card._cleanup();
+  if (card.ws && card.ws.readyState === WebSocket.OPEN) card.ws.close();
   card.term.dispose();
   card.el.remove();
   cards.splice(idx, 1);
+  saveLayout();
   drawMinimap();
   updateHubCount();
 }
@@ -616,10 +641,27 @@ function updateHubCount() {
 // ════════════════════════════════════════════
 // Drag
 // ════════════════════════════════════════════
+function zoomToCard(card) {
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  const pad = 40;
+  zoom = Math.min((vw - pad * 2) / card.w, (vh - pad * 2) / card.h, 2);
+  pan.x = (vw - card.w * zoom) / 2 - card.x * zoom;
+  pan.y = (vh - card.h * zoom) / 2 - card.y * zoom;
+  applyTransform();
+  setTimeout(() => card.fitAddon.fit(), 100);
+}
+
 function setupDrag(card) {
   const titlebar = card.el.querySelector(`[data-drag="${card.id}"]`);
   let dragging = false;
   let startX, startY, origX, origY;
+
+  // Double-click title bar to zoom-to-fill
+  titlebar.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.close-btn')) return;
+    zoomToCard(card);
+  });
 
   titlebar.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.close-btn')) return;
@@ -639,7 +681,7 @@ function setupDrag(card) {
     card.el.style.top = card.y + 'px';
     drawMinimap();
   });
-  titlebar.addEventListener('pointerup', () => { dragging = false; });
+  titlebar.addEventListener('pointerup', () => { dragging = false; saveLayout(); });
 }
 
 // ════════════════════════════════════════════
@@ -667,7 +709,7 @@ function setupResize(card) {
     card.el.style.height = card.h + 'px';
     drawMinimap();
   });
-  handle.addEventListener('pointerup', () => { resizing = false; });
+  handle.addEventListener('pointerup', () => { resizing = false; saveLayout(); });
 }
 
 // ════════════════════════════════════════════
@@ -691,6 +733,42 @@ function layoutGrid(hubList) {
 }
 
 // ════════════════════════════════════════════
+// Keyboard shortcuts
+// ════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  // Ctrl+0: fit all
+  if (e.ctrlKey && e.key === '0') {
+    e.preventDefault();
+    fitAll();
+    return;
+  }
+  // Escape: deselect focused card
+  if (e.key === 'Escape') {
+    focusedCardId = null;
+    cards.forEach(c => c.el.classList.remove('focused'));
+    return;
+  }
+});
+
+// ════════════════════════════════════════════
+// Layout persistence (localStorage)
+// ════════════════════════════════════════════
+const LAYOUT_KEY = 'claude-rts-layout';
+
+function saveLayout() {
+  const data = cards.map(c => ({ hub: c.hub, x: c.x, y: c.y, w: c.w, h: c.h }));
+  localStorage.setItem(LAYOUT_KEY, JSON.stringify(data));
+}
+
+function loadLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+// ════════════════════════════════════════════
 // Boot
 // ════════════════════════════════════════════
 (async function() {
@@ -707,9 +785,25 @@ function layoutGrid(hubList) {
     hubSymbolMap[h.hub] = HUB_SYMBOLS[i % HUB_SYMBOLS.length];
   });
 
-  layoutGrid(hubs);
+  // Restore saved layout or use default grid
+  const saved = loadLayout();
+  if (saved && saved.length > 0) {
+    // Spawn cards from saved layout
+    for (const s of saved) {
+      const hub = hubs.find(h => h.hub === s.hub);
+      if (hub) spawnCard(hub, s.x, s.y, s.w, s.h);
+    }
+    // Spawn any new hubs not in saved layout
+    for (const hub of hubs) {
+      if (!saved.some(s => s.hub === hub.hub)) {
+        spawnCard(hub, 100 + Math.random() * 200, 100 + Math.random() * 200);
+      }
+    }
+  } else {
+    layoutGrid(hubs);
+  }
 
-  // Center viewport on the grid
+  // Center viewport on the cards
   setTimeout(fitAll, 200);
 })();
 </script>
