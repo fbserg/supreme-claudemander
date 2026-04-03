@@ -291,8 +291,8 @@
       <div class="setting-row">
         <label>Scroll wheel behavior</label>
         <select id="setting-scrollMode">
-          <option value="auto">Auto (terminal or zoom)</option>
-          <option value="zoom-only">Always zoom canvas</option>
+          <option value="auto">Scroll terminal, Ctrl to zoom</option>
+          <option value="zoom-only">Zoom canvas, Ctrl to scroll</option>
         </select>
       </div>
     </div>
@@ -405,12 +405,14 @@ viewport.addEventListener('pointerup', () => {
 // ════════════════════════════════════════════
 viewport.addEventListener('wheel', (e) => {
   const overTerminal = e.target.closest('.terminal-card');
-  const forceZoom = e.ctrlKey;
+  const ctrlHeld = e.ctrlKey;
 
-  // In 'auto' mode: scroll terminal when cursor is over a card (unless Ctrl held)
-  // In 'zoom-only' mode: always zoom canvas (original behavior)
-  if (settings.scrollMode !== 'zoom-only' && overTerminal && !forceZoom) {
-    return; // let xterm.js handle the scroll event
+  // Ctrl acts as a modifier to flip behavior:
+  //   auto mode:      scroll=terminal, Ctrl+scroll=zoom
+  //   zoom-only mode: scroll=zoom,     Ctrl+scroll=terminal (when over card)
+  if (overTerminal) {
+    const scrollTerminal = settings.scrollMode === 'zoom-only' ? ctrlHeld : !ctrlHeld;
+    if (scrollTerminal) return; // let xterm.js handle the scroll event
   }
 
   e.preventDefault();
