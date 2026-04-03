@@ -1079,6 +1079,7 @@ class Card {
   serialize() {
     const data = { hub: this.hub, x: this.x, y: this.y, w: this.w, h: this.h, type: this.type, controlGroups: this.controlGroupNums.length > 0 ? [...this.controlGroupNums] : undefined };
     if (this.execCmd) data.exec = this.execCmd;
+    if (this.sessionId) data.session_id = this.sessionId;
     return data;
   }
 
@@ -1098,7 +1099,8 @@ class Card {
 class TerminalCard extends Card {
   constructor(opts) {
     super({ ...opts, type: 'terminal' });
-    this.execCmd = opts.exec || null; // custom exec command (for /ws/exec)
+    this.execCmd = opts.exec || null;
+    this.sessionId = opts.sessionId || null; // persistent session ID
     this.term = null;
     this.fitAddon = null;
     this.ws = null;
@@ -1148,19 +1150,39 @@ class TerminalCard extends Card {
 
   connectWs() {
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = this.execCmd
-      ? `${wsProto}//${location.host}/ws/exec?cmd=${encodeURIComponent(this.execCmd)}`
-      : `${wsProto}//${location.host}/ws/${this.hub}`;
+    let wsUrl;
+    if (this.sessionId) {
+      // Reconnect to existing persistent session
+      wsUrl = `${wsProto}//${location.host}/ws/session/${this.sessionId}`;
+    } else {
+      // Create new persistent session
+      const cmd = this.execCmd || `docker.exe exec -it -u vscode ${this.container} bash -l`;
+      wsUrl = `${wsProto}//${location.host}/ws/session/new?cmd=${encodeURIComponent(cmd)}&hub=${encodeURIComponent(this.hub)}`;
+    }
     this.ws = new WebSocket(wsUrl);
     this.ws.binaryType = 'arraybuffer';
 
     this.ws.addEventListener('open', () => {
-      this._reconnectDelay = 1000; // reset backoff
+      this._reconnectDelay = 1000;
       this.updateState('idle');
       this.ws.send(JSON.stringify({ type: 'resize', cols: this.term.cols, rows: this.term.rows }));
     });
     this.ws.addEventListener('message', (ev) => {
-      if (ev.data instanceof ArrayBuffer) {
+      if (typeof ev.data === 'string') {
+        // Control message from server (session_id, errors, etc.)
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.session_id) {
+            this.sessionId = msg.session_id;
+            saveLayout();
+          }
+          if (msg.error === 'session_not_found') {
+            this.sessionId = null;
+            this.connectWs(); // create new session
+            return;
+          }
+        } catch {}
+      } else if (ev.data instanceof ArrayBuffer) {
         this.term.write(new Uint8Array(ev.data));
         this.updateState('working');
       }
@@ -1481,9 +1503,9 @@ setInterval(() => {
 // ════════════════════════════════════════════
 // Spawn a terminal card
 // ════════════════════════════════════════════
-function spawnCard(hub, x, y, w, h, savedControlGroups, execCmd) {
+function spawnCard(hub, x, y, w, h, savedControlGroups, execCmd, sessionId) {
   const symbol = hubSymbolMap[hub.hub] || '?';
-  const card = new TerminalCard({ hub: hub.hub, container: hub.container, x, y, w, h, symbol, exec: execCmd || hub.exec || null });
+  const card = new TerminalCard({ hub: hub.hub, container: hub.container, x, y, w, h, symbol, exec: execCmd || hub.exec || null, sessionId: sessionId || null });
   if (savedControlGroups && Array.isArray(savedControlGroups)) {
     card.controlGroupNums = [...savedControlGroups];
   }
@@ -2107,7 +2129,7 @@ async function switchCanvas(name) {
         spawnWidget(s.widgetType, s.x, s.y, s.w, s.h);
       } else {
         const hub = hubs.find(h => h.hub === s.hub);
-        if (hub) spawnCard(hub, s.x, s.y, s.w, s.h, s.controlGroups, s.exec);
+        if (hub) spawnCard(hub, s.x, s.y, s.w, s.h, s.controlGroups, s.exec, s.session_id);
       }
     }
     rebuildControlGroupsFromCards();
@@ -2213,7 +2235,7 @@ async function switchCanvas(name) {
         spawnWidget(s.widgetType, s.x, s.y, s.w, s.h);
       } else {
         const hub = hubs.find(h => h.hub === s.hub);
-        if (hub) spawnCard(hub, s.x, s.y, s.w, s.h, s.controlGroups, s.exec);
+        if (hub) spawnCard(hub, s.x, s.y, s.w, s.h, s.controlGroups, s.exec, s.session_id);
       }
     }
     // Spawn any new hubs not in saved layout

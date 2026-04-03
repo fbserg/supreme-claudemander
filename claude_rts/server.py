@@ -17,6 +17,7 @@ from .config import read_config, write_config, list_canvases, read_canvas, write
 from .discovery import discover_hubs
 from .startup import run_startup
 from .util_container import ensure_util_container, is_util_running, list_profiles, probe_usage
+from .sessions import SessionManager
 
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
@@ -342,8 +343,169 @@ async def exec_websocket_handler(request: web.Request) -> web.WebSocketResponse:
     return ws
 
 
-def create_app() -> web.Application:
+# ── Session-based WebSocket handlers ─────────────────────────────────────────
+
+
+async def _session_ws_input_loop(ws: web.WebSocketResponse, session, mgr: SessionManager):
+    """Shared input loop for session-based WebSocket handlers."""
+    try:
+        async for msg in ws:
+            if msg.type == web.WSMsgType.BINARY:
+                text = msg.data.decode("utf-8", errors="replace")
+                session.pty.write(text)
+            elif msg.type == web.WSMsgType.TEXT:
+                try:
+                    control = json.loads(msg.data)
+                    if control.get("type") == "resize":
+                        cols = control.get("cols", 80)
+                        rows = control.get("rows", 24)
+                        session.pty.setwinsize(rows, cols)
+                except json.JSONDecodeError:
+                    pass
+            elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
+                break
+    except Exception:
+        logger.exception("Session {} WS input error", session.session_id)
+    finally:
+        mgr.detach(session.session_id, ws)
+
+
+async def session_new_handler(request: web.Request) -> web.WebSocketResponse:
+    """Create a new persistent session and attach via WebSocket."""
+    cmd = request.query.get("cmd", "").strip()
+    hub = request.query.get("hub", "")
+    if not cmd:
+        raise web.HTTPBadRequest(text="Missing 'cmd' query parameter")
+
+    mgr: SessionManager = request.app["session_manager"]
+
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    try:
+        session = mgr.create_session(cmd, hub=hub or None)
+    except Exception:
+        logger.exception("Failed to create session for cmd={!r}", cmd)
+        await ws.send_str(json.dumps({"error": "Failed to spawn terminal"}))
+        await ws.close()
+        return ws
+
+    await ws.send_str(json.dumps({"session_id": session.session_id}))
+    await mgr.attach(session.session_id, ws)
+
+    # Send resize if client sends it as first message
+    await _session_ws_input_loop(ws, session, mgr)
+    return ws
+
+
+async def session_attach_handler(request: web.Request) -> web.WebSocketResponse:
+    """Attach to an existing persistent session via WebSocket."""
+    session_id = request.match_info["session_id"]
+    mgr: SessionManager = request.app["session_manager"]
+
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    scrollback = await mgr.attach(session_id, ws)
+    if scrollback is None:
+        await ws.send_str(json.dumps({"error": "session_not_found"}))
+        await ws.close()
+        return ws
+
+    # Replay scrollback, then signal ready
+    if scrollback:
+        await ws.send_bytes(scrollback)
+    await ws.send_str(json.dumps({"type": "session_attached", "session_id": session_id}))
+
+    session = mgr.get_session(session_id)
+    if session:
+        await _session_ws_input_loop(ws, session, mgr)
+    return ws
+
+
+async def sessions_list_handler(request: web.Request) -> web.Response:
+    """List all active sessions."""
+    mgr: SessionManager = request.app["session_manager"]
+    return web.json_response(mgr.list_sessions())
+
+
+# ── Test puppeting API (test_mode only) ──────────────────────────────────────
+
+
+async def test_session_create(request: web.Request) -> web.Response:
+    cmd = request.query.get("cmd", "").strip()
+    hub = request.query.get("hub", "")
+    if not cmd:
+        raise web.HTTPBadRequest(text="Missing 'cmd' query parameter")
+    mgr: SessionManager = request.app["session_manager"]
+    try:
+        session = mgr.create_session(cmd, hub=hub or None)
+        return web.json_response({"session_id": session.session_id})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def test_session_send(request: web.Request) -> web.Response:
+    sid = request.match_info["id"]
+    mgr: SessionManager = request.app["session_manager"]
+    session = mgr.get_session(sid)
+    if not session:
+        raise web.HTTPNotFound(text="Session not found")
+    text = await request.text()
+    session.pty.write(text)
+    return web.json_response({"status": "ok", "sent": len(text)})
+
+
+async def test_session_read(request: web.Request) -> web.Response:
+    sid = request.match_info["id"]
+    mgr: SessionManager = request.app["session_manager"]
+    session = mgr.get_session(sid)
+    if not session:
+        raise web.HTTPNotFound(text="Session not found")
+    data = session.scrollback.get_all()
+    return web.json_response({
+        "output": data.decode("utf-8", errors="replace"),
+        "size": len(data),
+        "total_written": session.scrollback.total_written,
+    })
+
+
+async def test_session_status(request: web.Request) -> web.Response:
+    sid = request.match_info["id"]
+    mgr: SessionManager = request.app["session_manager"]
+    session = mgr.get_session(sid)
+    if not session:
+        raise web.HTTPNotFound(text="Session not found")
+    now = time.monotonic()
+    return web.json_response({
+        "session_id": session.session_id,
+        "alive": session.alive,
+        "client_count": len(session.clients),
+        "scrollback_size": session.scrollback.size,
+        "age_seconds": int(now - session.created_at),
+        "idle_seconds": int(now - session.last_client_time),
+    })
+
+
+async def test_session_delete(request: web.Request) -> web.Response:
+    sid = request.match_info["id"]
+    mgr: SessionManager = request.app["session_manager"]
+    if not mgr.get_session(sid):
+        raise web.HTTPNotFound(text="Session not found")
+    mgr.destroy_session(sid)
+    return web.json_response({"status": "ok"})
+
+
+async def test_sessions_list(request: web.Request) -> web.Response:
+    mgr: SessionManager = request.app["session_manager"]
+    return web.json_response(mgr.list_sessions())
+
+
+def create_app(test_mode: bool = False) -> web.Application:
     app = web.Application()
+    app["test_mode"] = test_mode
+
+    # Static + API routes
     app.router.add_get("/", index_handler)
     app.router.add_get("/api/hubs", hubs_handler)
     app.router.add_get("/api/startup", startup_handler)
@@ -356,16 +518,46 @@ def create_app() -> web.Application:
     app.router.add_get("/api/widgets/system-info", widget_system_info_handler)
     app.router.add_get("/api/widgets/claude-usage", widget_claude_usage_handler)
     app.router.add_get("/api/widgets/claude-usage/status", widget_claude_usage_status_handler)
+
+    # Session routes (must be before /ws/{hub} catch-all)
+    app.router.add_get("/api/sessions", sessions_list_handler)
+    app.router.add_get("/ws/session/new", session_new_handler)
+    app.router.add_get("/ws/session/{session_id}", session_attach_handler)
     app.router.add_get("/ws/exec", exec_websocket_handler)
 
-    # Start utility container in background on app startup
+    # Test puppeting API (only in test mode)
+    if test_mode:
+        app.router.add_post("/api/test/session/create", test_session_create)
+        app.router.add_post("/api/test/session/{id}/send", test_session_send)
+        app.router.add_get("/api/test/session/{id}/read", test_session_read)
+        app.router.add_get("/api/test/session/{id}/status", test_session_status)
+        app.router.add_delete("/api/test/session/{id}", test_session_delete)
+        app.router.add_get("/api/test/sessions", test_sessions_list)
+
+    # Legacy hub WebSocket (catch-all, must be last)
+    app.router.add_get("/ws/{hub}", websocket_handler)
+
+    # Lifecycle hooks
+    config = read_config()
+    session_config = config.get("sessions", {})
+
     async def on_startup(app: web.Application) -> None:
+        mgr = SessionManager(
+            orphan_timeout=session_config.get("orphan_timeout", 300),
+            scrollback_size=session_config.get("scrollback_size", 65536),
+        )
+        app["session_manager"] = mgr
+        mgr.start_orphan_reaper()
         try:
             await ensure_util_container()
         except Exception:
             logger.warning("Failed to start utility container (non-fatal)")
 
+    async def on_shutdown(app: web.Application) -> None:
+        if "session_manager" in app:
+            app["session_manager"].stop_all()
+
     app.on_startup.append(on_startup)
-    app.router.add_get("/ws/{hub}", websocket_handler)
+    app.on_shutdown.append(on_shutdown)
     logger.info("Application routes registered")
     return app
