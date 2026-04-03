@@ -1156,7 +1156,7 @@ class TerminalCard extends Card {
       wsUrl = `${wsProto}//${location.host}/ws/session/${this.sessionId}`;
     } else {
       // Create new persistent session
-      const cmd = this.execCmd || `docker.exe exec -it -u vscode ${this.container} bash -l`;
+      const cmd = this.execCmd || `docker.exe exec -it -u vscode -w /workspaces/${this.hub} ${this.container} bash -l`;
       wsUrl = `${wsProto}//${location.host}/ws/session/new?cmd=${encodeURIComponent(cmd)}&hub=${encodeURIComponent(this.hub)}&container=${encodeURIComponent(this.container || '')}`;
     }
     this.ws = new WebSocket(wsUrl);
@@ -2209,7 +2209,7 @@ async function switchCanvas(name) {
       const hubData = await resp.json();
       hubs = hubData.map(h => ({
         ...h,
-        exec: `docker.exe exec -it -u vscode ${h.container} bash -l`,
+        exec: `docker.exe exec -it -u vscode -w /workspaces/${h.hub} ${h.container} bash -l`,
       }));
     } catch {
       hubs = [];

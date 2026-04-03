@@ -53,7 +53,7 @@ async def _builtin_discover_devcontainers() -> list[dict]:
             "type": "terminal",
             "name": h["hub"],
             "container": h["container"],
-            "exec": f'docker.exe exec -it -u vscode {h["container"]} bash -l',
+            "exec": f'docker.exe exec -it -u vscode -w /workspaces/{h["hub"]} {h["container"]} bash -l',
         })
     logger.info("discover-devcontainers: found {} hub(s)", len(result))
     return result

@@ -121,7 +121,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     logger.info("WebSocket established: {} -> container '{}'", hub_name, hub["container"])
 
     # Spawn docker exec via ConPTY for full terminal support
-    cmd = f'docker.exe exec -it -u vscode {hub["container"]} bash -l'
+    cmd = f'docker.exe exec -it -u vscode -w /workspaces/{hub_name} {hub["container"]} bash -l'
     logger.info("Spawning PTY process: {}", cmd)
 
     try:
