@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description="claude-rts terminal canvas")
     parser.add_argument("--port", type=int, default=3000, help="Server port (default: 3000)")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
+    parser.add_argument("--test-mode", action="store_true", help="Enable test puppeting API")
     args = parser.parse_args()
 
     # Configure loguru: remove default handler, add our own
@@ -33,7 +34,11 @@ def main():
 
     logger.info("claude-rts starting on http://localhost:{}", args.port)
 
-    app = create_app()
+    import os
+    test_mode = args.test_mode or os.environ.get("CLAUDE_RTS_TEST_MODE", "").lower() in ("1", "true")
+    app = create_app(test_mode=test_mode)
+    if test_mode:
+        logger.info("Test mode enabled — puppeting API available")
 
     if not args.no_browser:
         async def open_browser(app):

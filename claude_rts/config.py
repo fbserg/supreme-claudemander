@@ -30,6 +30,10 @@ DEFAULT_CONFIG = {
         "auto_stop": False,
         "mounts": {},
     },
+    "sessions": {
+        "orphan_timeout": 300,
+        "scrollback_size": 65536,
+    },
 }
 
 # Allowed canvas name pattern: alphanumeric, hyphens, underscores
