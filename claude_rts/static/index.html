@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>claude-rts</title>
+<title>supreme-claudemander</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -440,7 +440,7 @@
 <body>
 
 <div id="status-bar">
-  <span class="title">claude-rts</span>
+  <span class="title">supreme-claudemander</span>
   <span class="info" id="hub-count">connecting...</span>
   <div id="canvas-switcher">
     <button id="canvas-switcher-btn">
@@ -778,7 +778,7 @@ function showContextMenu(sx, sy) {
   const hostShells = [
     { id: 'powershell', label: 'PowerShell', cmd: 'powershell.exe' },
     { id: 'cmd', label: 'Command Prompt', cmd: 'cmd.exe' },
-    { id: 'util', label: 'Utility Container', cmd: 'docker.exe exec -it claude-rts-util bash' },
+    { id: 'util', label: 'Utility Container', cmd: 'docker.exe exec -it supreme-claudemander-util bash' },
   ];
   for (const shell of hostShells) {
     html += `<div class="ctx-item" data-host-shell="${shell.id}" data-host-cmd="${shell.cmd}">
@@ -1156,8 +1156,8 @@ class TerminalCard extends Card {
       wsUrl = `${wsProto}//${location.host}/ws/session/${this.sessionId}`;
     } else {
       // Create new persistent session
-      const cmd = this.execCmd || `docker.exe exec -it -u vscode ${this.container} bash -l`;
-      wsUrl = `${wsProto}//${location.host}/ws/session/new?cmd=${encodeURIComponent(cmd)}&hub=${encodeURIComponent(this.hub)}`;
+      const cmd = this.execCmd || `docker.exe exec -it -u vscode -w /workspaces/${this.hub} ${this.container} bash -l`;
+      wsUrl = `${wsProto}//${location.host}/ws/session/new?cmd=${encodeURIComponent(cmd)}&hub=${encodeURIComponent(this.hub)}&container=${encodeURIComponent(this.container || '')}`;
     }
     this.ws = new WebSocket(wsUrl);
     this.ws.binaryType = 'arraybuffer';
@@ -1175,6 +1175,9 @@ class TerminalCard extends Card {
           if (msg.session_id) {
             this.sessionId = msg.session_id;
             saveLayout();
+            if (msg.tmux === false && this.container) {
+              this.term.write('\r\n\x1b[33m⚠ tmux not available in container — terminal will not persist across server restarts. Install tmux in the container to enable persistence.\x1b[0m\r\n');
+            }
           }
           if (msg.error === 'session_not_found') {
             this.sessionId = null;
@@ -2206,7 +2209,7 @@ async function switchCanvas(name) {
       const hubData = await resp.json();
       hubs = hubData.map(h => ({
         ...h,
-        exec: `docker.exe exec -it -u vscode ${h.container} bash -l`,
+        exec: `docker.exe exec -it -u vscode -w /workspaces/${h.hub} ${h.container} bash -l`,
       }));
     } catch {
       hubs = [];

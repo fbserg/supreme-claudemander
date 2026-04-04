@@ -1,4 +1,4 @@
-# claude-rts utility container
+# supreme-claudemander utility container
 # Purpose: background tasks, monitoring, status probing (NOT coding or LLM calls)
 # Runs probe loop + stays alive for interactive exec
 
@@ -8,6 +8,7 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     procps \
+    tmux \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*

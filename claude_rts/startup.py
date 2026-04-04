@@ -4,7 +4,7 @@ Built-in scripts:
   - discover-devcontainers: runs docker discovery, returns terminal entries
   - from-layout: returns empty list (frontend loads from saved canvas)
 
-Custom scripts: executable files in ~/.claude-rts/startup/ that output JSON arrays.
+Custom scripts: executable files in ~/.supreme-claudemander/startup/ that output JSON arrays.
 """
 
 import asyncio
@@ -31,7 +31,7 @@ async def run_startup(script_name: str) -> list[dict]:
     """Run a startup script and return its JSON output.
 
     For built-in scripts, handles them directly.
-    For custom scripts in ~/.claude-rts/startup/, executes them and parses JSON.
+    For custom scripts in ~/.supreme-claudemander/startup/, executes them and parses JSON.
 
     Returns a list of card descriptors, e.g.:
       [{"type": "terminal", "name": "hub_1", "exec": "docker.exe exec -it ..."}]
@@ -53,7 +53,7 @@ async def _builtin_discover_devcontainers() -> list[dict]:
             "type": "terminal",
             "name": h["hub"],
             "container": h["container"],
-            "exec": f'docker.exe exec -it -u vscode {h["container"]} bash -l',
+            "exec": f'docker.exe exec -it -u vscode -w /workspaces/{h["hub"]} {h["container"]} bash -l',
         })
     logger.info("discover-devcontainers: found {} hub(s)", len(result))
     return result
