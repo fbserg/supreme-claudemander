@@ -135,7 +135,8 @@ def test_credential_state_to_dict_keys():
     expected_keys = {
         "name", "usage_5hr_pct", "usage_daily_pct", "five_hour_resets",
         "seven_day_resets", "burn_rate", "burn_class", "health",
-        "account_id", "last_probe_time", "last_probe_wall", "last_health_check", "error",
+        "account_id", "last_probe_time", "last_probe_wall", "data_timestamp",
+        "last_health_check", "error",
     }
     assert expected_keys == set(d.keys())
     assert d["name"] == "acct-alice"
@@ -382,7 +383,7 @@ async def test_probe_one_probe_returns_none():
         state = await mgr._probe_one("acct-fail")
 
     assert state.name == "acct-fail"
-    assert state.error == "probe returned no data"
+    assert state.error == "usage.json not found"
     assert state.last_probe_time is not None
 
 

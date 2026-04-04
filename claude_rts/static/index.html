@@ -492,15 +492,13 @@
   }
   .cred-add-btn:hover { background: #45475a; }
   .cred-footer-msg { color: #a6adc8; font-size: 11px; margin-top: 6px; text-align: center; }
-  .cred-probe-btn {
-    background: #313244; border: 1px solid #45475a; color: #89dceb;
-    padding: 2px 7px; border-radius: 4px; cursor: pointer; font-size: 10px;
-    flex-shrink: 0; line-height: 1.4;
+  .cred-stale-age { font-size: 10px; color: #a6adc8; flex-shrink: 0; }
+  .cred-stale-age.warn { color: #f9e2af; }
+  .cred-stale-banner {
+    background: rgba(243,139,168,0.15); border: 1px solid #f38ba8;
+    border-radius: 6px; padding: 8px 10px; margin: 4px 0;
+    font-size: 11px; color: #f38ba8; display: flex; align-items: center; gap: 6px;
   }
-  .cred-probe-btn:hover { background: #45475a; }
-  .cred-probe-btn:disabled { opacity: 0.5; cursor: default; }
-  .cred-probe-btn.probing { color: #f9e2af; }
-  .cred-stale-age { font-size: 10px; color: #585b70; flex-shrink: 0; }
 
   /* ── Control group badge ── */
   .control-group-badge {
@@ -1657,7 +1655,7 @@ const WIDGET_REGISTRY = {
         if (cred.burn_rate != null) rows.push(['Burn rate', `${cred.burn_rate.toFixed(1)}/hr`]);
         if (cred.account_id) rows.push(['Account ID', cred.account_id]);
         if (cred.health) rows.push(['Health', cred.health]);
-        const ago = formatAgo(cred.last_probe_wall);
+        const ago = formatAgo(cred.data_timestamp);
         if (ago) rows.push(['Data age', ago]);
 
         let html = rows.map(([l, v]) =>
@@ -1678,7 +1676,7 @@ const WIDGET_REGISTRY = {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const credentials = data.credentials || [];
-        const utilContainerName = data.util_container_name || 'supreme-claudemander-util';
+        const maxDataAge = data.max_data_age || 300;
 
         if (credentials.length === 0) {
           body.innerHTML = `<div class="usage-status">No credentials configured.</div>`;
@@ -1698,15 +1696,27 @@ const WIDGET_REGISTRY = {
             return rb - ra;
           });
 
+          const nowSec = Date.now() / 1000;
+
           let html = `<div id="cred-list">`;
           for (const cred of enriched) {
             const { icon, cls: statusCls } = cred._burnStatus;
-            const pct = cred.usage_5hr_pct != null ? cred.usage_5hr_pct : (cred.usage_daily_pct != null ? cred.usage_daily_pct : 0);
-            const burnRateStr = cred.burn_rate != null ? `${cred.burn_rate.toFixed(1)}/hr` : '—';
-            const resetStr = cred.five_hour_resets != null
+
+            // Compute data age from data_timestamp (when usage.json was written)
+            const dataAge = cred.data_timestamp != null ? nowSec - cred.data_timestamp : null;
+            const tooStale = dataAge != null && dataAge > maxDataAge;
+            const warnStale = !tooStale && dataAge != null && dataAge > 60;
+
+            const showValues = !tooStale && cred.data_timestamp != null;
+            const pct = showValues
+              ? (cred.usage_5hr_pct != null ? cred.usage_5hr_pct : (cred.usage_daily_pct != null ? cred.usage_daily_pct : 0))
+              : 0;
+            const burnRateStr = showValues && cred.burn_rate != null ? `${cred.burn_rate.toFixed(1)}/hr` : '—';
+            const resetStr = showValues && cred.five_hour_resets != null
               ? `5hr reset: ${cred.five_hour_resets}`
-              : (cred.seven_day_resets != null ? `7d reset: ${cred.seven_day_resets}` : '');
-            const ago = formatAgo(cred.last_probe_wall);
+              : (showValues && cred.seven_day_resets != null ? `7d reset: ${cred.seven_day_resets}` : '');
+            const ago = formatAgo(cred.data_timestamp);
+            const agoClass = warnStale ? 'cred-stale-age warn' : 'cred-stale-age';
 
             html += `<div class="${credRowClass(statusCls)}" data-cred-toggle="${cred.name}">`;
             html += `<span class="cred-icon">${icon}</span>`;
@@ -1715,9 +1725,15 @@ const WIDGET_REGISTRY = {
             html += renderBurnBar(pct, statusCls);
             html += `<div class="cred-stats"><span>${burnRateStr}</span><span>${resetStr}</span></div>`;
             html += `</div>`;
-            if (ago) html += `<span class="cred-stale-age" title="Last probe">${ago}</span>`;
-            html += `<button class="cred-probe-btn" data-cred-probe="${cred.name}" title="Probe usage via terminal">↺</button>`;
+            if (ago) html += `<span class="${agoClass}" title="Data written">${ago}</span>`;
             html += `</div>`;
+
+            // Big stale warning banner
+            if (tooStale) {
+              const ageMin = Math.floor(dataAge / 60);
+              html += `<div class="cred-stale-banner">⚠ Usage data is ${ageMin}m old — values hidden until probe_loop.sh updates.</div>`;
+            }
+
             // Detail panel (hidden by default)
             html += `<div class="cred-detail" id="cred-detail-${cred.name.replace(/[^a-zA-Z0-9_-]/g,'_')}" style="display:none">`;
             html += buildDetailHtml(cred, statusCls);
@@ -1761,30 +1777,6 @@ const WIDGET_REGISTRY = {
           });
         });
 
-        // Wire up probe buttons
-        body.querySelectorAll('[data-cred-probe]').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const name = btn.getAttribute('data-cred-probe');
-            btn.disabled = true;
-            btn.textContent = '…';
-            btn.classList.add('probing');
-            try {
-              const probeData = await WIDGET_REGISTRY['credential-manager'].probeViaWs(name, utilContainerName);
-              await fetch(`/api/credentials/${encodeURIComponent(name)}/probe-result`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(probeData),
-              });
-              await WIDGET_REGISTRY['credential-manager'].render(body, card);
-            } catch (err) {
-              btn.disabled = false;
-              btn.textContent = '↺';
-              btn.classList.remove('probing');
-              btn.title = `Probe failed: ${err.message}`;
-            }
-          });
-        });
 
         // Wire up Add Credential button
         const addBtn = body.querySelector('.cred-add-btn');

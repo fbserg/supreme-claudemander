@@ -359,43 +359,26 @@ async def write_account_id_file(name: str, account_id: str) -> bool:
         return False
 
 
-async def probe_usage(claude_dir: str, timeout: float = 60) -> dict | None:
-    """Run claude-usage inside the utility container for a specific config dir.
+async def probe_usage(name: str, timeout: float = 10) -> dict | None:
+    """Read the usage.json file written by probe_loop.sh inside the utility container.
 
-    Uses exec_in_util_pty to provide a real ConPTY — required because
-    claude-usage-plz/pexpect needs a TTY to function.  The probe is flaky
-    (ConPTY escape codes can confuse pexpect), so callers should cache
-    successful results and tolerate None returns.
-
-    Returns parsed JSON dict or None on failure.
+    The file is at /profiles/<name>/usage.json and is written by the container's
+    background probe loop.  We read it directly — no PTY or claude-usage invocation
+    needed.  Returns the parsed dict (including probe_time) or None on failure.
     """
-    if not await is_util_running():
+    _validate_profile_name(name)
+    cfg = _get_config()
+    rc, stdout, _ = await _run(
+        f'docker.exe exec {cfg["name"]} sh -c "cat /profiles/{name}/usage.json"',
+        timeout=timeout,
+    )
+    if rc != 0:
+        logger.debug("probe_usage({}): usage.json not found or container not running", name)
         return None
-
-    cmd = f"claude-usage --claude-dir {claude_dir} --json"
-    logger.debug("probe_usage: {}", cmd)
     try:
-        rc, stdout = await exec_in_util_pty(cmd, timeout=timeout)
-    except RuntimeError:
-        return None
-    except Exception as exc:
-        logger.warning("probe_usage PTY error for {}: {}", claude_dir, exc)
-        return None
-
-    clean = stdout.replace('\r', '').replace('\x00', '').strip()
-    # Remove ANSI escape sequences and terminal control codes
-    import re
-    clean = re.sub(r'\x1b\[[^a-zA-Z]*[a-zA-Z]', '', clean)
-    clean = re.sub(r'\x1b[^[[]', '', clean)
-
-    json_start = clean.find('{')
-    json_end = clean.rfind('}')
-    if json_start < 0 or json_end <= json_start:
-        logger.warning("No JSON found in probe output for {}: {}", claude_dir, clean[:200])
-        return None
-
-    try:
-        return json.loads(clean[json_start:json_end + 1])
+        data = json.loads(stdout)
+        logger.debug("probe_usage({}): probe_time={}", name, data.get("probe_time"))
+        return data
     except json.JSONDecodeError as exc:
-        logger.warning("claude-usage returned invalid JSON for {}: {}", claude_dir, exc)
+        logger.warning("probe_usage({}): invalid JSON in usage.json: {}", name, exc)
         return None

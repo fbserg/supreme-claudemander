@@ -40,8 +40,9 @@ DEFAULT_CONFIG = {
         "tmux_persistence": True,
     },
     "credentials": {
-        "probe_interval": 60,           # seconds between probe cycles
+        "probe_interval": 120,          # seconds between probe cycles (2 min)
         "health_check_interval": 900,   # 15 min between health checks
+        "max_data_age": 300,            # 5 min — beyond this, data is too stale to display
     },
 }
 

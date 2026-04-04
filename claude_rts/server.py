@@ -446,9 +446,11 @@ async def credentials_list_handler(request: web.Request) -> web.Response:
     states = cred_mgr.get_all()
     config = read_config()
     util_name = config.get("util_container", {}).get("name", "supreme-claudemander-util")
+    max_data_age = config.get("credentials", {}).get("max_data_age", 300)
     return web.json_response({
         "credentials": [s.to_dict() for s in states],
         "util_container_name": util_name,
+        "max_data_age": max_data_age,
     })
 
 

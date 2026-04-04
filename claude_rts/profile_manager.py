@@ -32,8 +32,9 @@ class CredentialState:
     burn_class: str = "unknown"                 # "overburning", "normal", "underburning"
     health: str = "unknown"                     # "healthy", "stale", "unknown"
     account_id: Optional[str] = None
-    last_probe_time: Optional[float] = None    # time.monotonic()
-    last_probe_wall: Optional[float] = None    # time.time() — wall clock for display
+    last_probe_time: Optional[float] = None    # time.monotonic() — last backend read attempt
+    last_probe_wall: Optional[float] = None    # time.time() — wall clock of last backend read
+    data_timestamp: Optional[float] = None     # probe_time from usage.json — when data was written
     last_health_check: Optional[float] = None
     error: Optional[str] = None
 
@@ -50,6 +51,7 @@ class CredentialState:
             "account_id": self.account_id,
             "last_probe_time": self.last_probe_time,
             "last_probe_wall": self.last_probe_wall,
+            "data_timestamp": self.data_timestamp,
             "last_health_check": self.last_health_check,
             "error": self.error,
         }
@@ -216,6 +218,7 @@ class CredentialManager:
             account_id=existing.account_id,
             last_probe_time=time.monotonic(),
             last_probe_wall=time.time(),
+            data_timestamp=data.get("probe_time"),
             last_health_check=existing.last_health_check,
             error=None,
         )
@@ -261,21 +264,20 @@ class CredentialManager:
     # ── Internal probe helpers ──────────────────────────────────────────────
 
     async def _probe_one(self, name: str) -> CredentialState:
-        """Probe a single profile and return an updated CredentialState."""
+        """Read usage.json for a profile and return an updated CredentialState."""
         existing = self._cache.get(name, CredentialState(name=name))
+        now_mono = time.monotonic()
+        now_wall = time.time()
         try:
-            # probe_usage expects the container path, e.g. /profiles/<name>
-            result = await probe_usage(f"/profiles/{name}")
+            result = await probe_usage(name)
             if result is None:
-                # Probe failed — preserve last successful data if available
-                existing.last_probe_time = time.monotonic()
-                existing.error = "probe returned no data"
+                existing.last_probe_time = now_mono
+                existing.last_probe_wall = now_wall
+                existing.error = "usage.json not found"
                 return existing
 
-            # Field names from probe_usage() response (see /api/widgets/claude-usage)
             usage_5hr = result.get("five_hour_pct")
             five_hr_resets = result.get("five_hour_resets")
-
             burn_rate = None
             burn_class = "unknown"
             if usage_5hr is not None and five_hr_resets:
@@ -283,7 +285,6 @@ class CredentialManager:
                 if burn_rate is not None:
                     burn_class = classify_burn(burn_rate)
 
-            # Read stored account ID, falling back to parsing from credentials file
             account_id = await read_account_id_file(name)
             if account_id is None:
                 account_id = await get_account_id(name)
@@ -298,15 +299,18 @@ class CredentialManager:
                 seven_day_resets=result.get("seven_day_resets"),
                 burn_rate=burn_rate,
                 burn_class=burn_class,
-                health=existing.health,   # preserved from health_check loop
+                health=existing.health,
                 account_id=account_id,
-                last_probe_time=time.monotonic(),
+                last_probe_time=now_mono,
+                last_probe_wall=now_wall,
+                data_timestamp=result.get("probe_time"),
                 last_health_check=existing.last_health_check,
+                error=None,
             )
         except Exception as exc:
             logger.warning("Failed to probe credential '{}': {}", name, exc)
-            # Preserve last successful data if available
-            existing.last_probe_time = time.monotonic()
+            existing.last_probe_time = now_mono
+            existing.last_probe_wall = now_wall
             existing.error = str(exc)
             return existing
 
