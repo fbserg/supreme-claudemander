@@ -16,7 +16,7 @@ _start_time = time.monotonic()
 from .config import read_config, write_config, list_canvases, read_canvas, write_canvas, delete_canvas
 from .discovery import discover_hubs
 from .startup import run_startup
-from .util_container import ensure_util_container, is_util_running, list_profiles, probe_usage
+from .util_container import ensure_util_container, is_util_running, list_profiles, probe_usage_via_session
 from .sessions import SessionManager
 
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
@@ -238,6 +238,7 @@ async def widget_claude_usage_handler(request: web.Request) -> web.Response:
         })
 
     now = time.monotonic()
+    mgr: SessionManager = request.app["session_manager"]
     results = []
 
     for profile in profiles:
@@ -246,8 +247,7 @@ async def widget_claude_usage_handler(request: web.Request) -> web.Response:
             results.append({"profile": profile, **cached["data"], "cached": True})
             continue
 
-        claude_dir = f"/profiles/{profile}"
-        usage = await probe_usage(claude_dir)
+        usage = await probe_usage_via_session(profile, mgr)
         if usage:
             _usage_cache[profile] = {"data": usage, "timestamp": now}
             results.append({"profile": profile, **usage, "cached": False})

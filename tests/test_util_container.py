@@ -1,11 +1,12 @@
 """Tests for the utility container module and claude-usage widget API."""
 
 import json
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 
 from claude_rts.server import create_app
+from claude_rts.util_container import parse_json_from_output
 
 
 @pytest.fixture
@@ -16,6 +17,41 @@ def app():
 @pytest.fixture
 async def client(aiohttp_client, app):
     return await aiohttp_client(app)
+
+
+# ── parse_json_from_output unit tests ──
+
+
+def test_parse_json_plain():
+    """Plain JSON with no ANSI codes is parsed correctly."""
+    output = '{"five_hour_pct": 42.0, "seven_day_pct": 25.0}'
+    result = parse_json_from_output(output)
+    assert result == {"five_hour_pct": 42.0, "seven_day_pct": 25.0}
+
+
+def test_parse_json_strips_ansi():
+    """ANSI escape sequences are stripped before parsing."""
+    output = "\x1b[32mSome output\x1b[0m\r\n" + '{"five_hour_pct": 10.0}' + "\r\n"
+    result = parse_json_from_output(output)
+    assert result is not None
+    assert result["five_hour_pct"] == 10.0
+
+
+def test_parse_json_no_json():
+    """Returns None when no JSON object is found."""
+    result = parse_json_from_output("WARNING: No usage data parsed from screen output (40 lines)")
+    assert result is None
+
+
+def test_parse_json_invalid_json():
+    """Returns None when JSON is malformed."""
+    result = parse_json_from_output("{not: valid json}")
+    assert result is None
+
+
+def test_parse_json_empty():
+    """Returns None for empty output."""
+    assert parse_json_from_output("") is None
 
 
 # ── Claude usage widget API tests ──
@@ -54,7 +90,7 @@ async def test_claude_usage_with_profiles(client):
     }
     with patch("claude_rts.server.is_util_running", new_callable=AsyncMock, return_value=True), \
          patch("claude_rts.server.list_profiles", new_callable=AsyncMock, return_value=["acct-alice"]), \
-         patch("claude_rts.server.probe_usage", new_callable=AsyncMock, return_value=mock_usage):
+         patch("claude_rts.server.probe_usage_via_session", new_callable=AsyncMock, return_value=mock_usage):
         resp = await client.get("/api/widgets/claude-usage")
     assert resp.status == 200
     data = await resp.json()
@@ -68,7 +104,7 @@ async def test_claude_usage_probe_failure(client):
     """When a probe fails, return error for that profile."""
     with patch("claude_rts.server.is_util_running", new_callable=AsyncMock, return_value=True), \
          patch("claude_rts.server.list_profiles", new_callable=AsyncMock, return_value=["acct-bob"]), \
-         patch("claude_rts.server.probe_usage", new_callable=AsyncMock, return_value=None):
+         patch("claude_rts.server.probe_usage_via_session", new_callable=AsyncMock, return_value=None):
         resp = await client.get("/api/widgets/claude-usage")
     assert resp.status == 200
     data = await resp.json()
