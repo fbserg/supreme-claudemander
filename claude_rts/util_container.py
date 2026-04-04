@@ -312,7 +312,7 @@ async def probe_usage_via_session(
         cfg = _get_config()
         container_name = cfg["name"]
 
-    cmd = f'docker.exe exec -it {container_name} bash -c "claude-usage --claude-dir /profiles/{name} --json"'
+    cmd = f'docker.exe exec -it {container_name} claude-usage --claude-dir /profiles/{name} --json'
     logger.info("probe_usage_via_session: name={}, container={}", name, container_name)
 
     try:
