@@ -40,8 +40,6 @@ def _make_credential_manager(states=None) -> MagicMock:
     mgr.get_all.return_value = states
     mgr.get.side_effect = lambda name: cache.get(name)
     mgr.get_best.return_value = states[0] if states else None
-    mgr.is_cache_ready.return_value = True
-    mgr.force_probe = AsyncMock(return_value=states[0] if states else _make_state("default"))
     mgr.force_health_check = AsyncMock(return_value=states[0] if states else _make_state("default"))
     mgr.create_profile = AsyncMock(return_value={"success": True, "name": "new-profile"})
     mgr.delete_profile = AsyncMock(return_value=True)
@@ -74,10 +72,7 @@ async def client_with_manager(aiohttp_client, app):
         MockSM.return_value = mock_sm_inst
 
         with patch("claude_rts.server.CredentialManager") as MockCM:
-            real_mgr_for_startup = MagicMock()
-            real_mgr_for_startup.start = AsyncMock()
-            real_mgr_for_startup.stop = AsyncMock()
-            MockCM.return_value = real_mgr_for_startup
+            MockCM.return_value = MagicMock()
             client = await aiohttp_client(app)
 
     client.app["credential_manager"] = mgr
@@ -99,6 +94,7 @@ async def _make_client(aiohttp_client, mgr: MagicMock):
         credentials_get_handler,
         credentials_list_handler,
         credentials_probe_handler,
+        credentials_probe_result_handler,
     )
 
     bare_app.router.add_get("/api/credentials", credentials_list_handler)
@@ -107,6 +103,7 @@ async def _make_client(aiohttp_client, mgr: MagicMock):
     bare_app.router.add_post("/api/credentials", credentials_create_handler)
     bare_app.router.add_delete("/api/credentials/{name}", credentials_delete_handler)
     bare_app.router.add_post("/api/credentials/{name}/probe", credentials_probe_handler)
+    bare_app.router.add_post("/api/credentials/{name}/probe-result", credentials_probe_result_handler)
     bare_app.router.add_post("/api/credentials/{name}/check", credentials_check_handler)
 
     bare_app["credential_manager"] = mgr
@@ -359,7 +356,6 @@ async def test_credentials_best_returns_profile(aiohttp_client):
     """GET /api/credentials/best returns 200 with profile info for the best credential."""
     state = _make_state("acct-alice", burn_rate=10.0, burn_class="normal", health="healthy")
     mgr = _make_credential_manager([state])
-    mgr.is_cache_ready.return_value = True
     mgr.get_best.return_value = state
     client = await _make_client(aiohttp_client, mgr)
 
@@ -373,23 +369,10 @@ async def test_credentials_best_returns_profile(aiohttp_client):
     assert "usage_5hr_pct" in data
 
 
-async def test_credentials_best_cache_cold(aiohttp_client):
-    """GET /api/credentials/best returns 503 when cache is not yet ready."""
-    mgr = _make_credential_manager([])
-    mgr.is_cache_ready.return_value = False
-    client = await _make_client(aiohttp_client, mgr)
-
-    resp = await client.get("/api/credentials/best")
-    assert resp.status == 503
-    data = await resp.json()
-    assert data["error"] == "cache_cold"
-
-
 async def test_credentials_best_all_stale(aiohttp_client):
     """GET /api/credentials/best returns 503 when all credentials are stale/unhealthy."""
     state = _make_state("acct-stale", health="stale")
     mgr = _make_credential_manager([state])
-    mgr.is_cache_ready.return_value = True
     mgr.get_best.return_value = None
     client = await _make_client(aiohttp_client, mgr)
 
@@ -399,10 +382,9 @@ async def test_credentials_best_all_stale(aiohttp_client):
     assert data["error"] == "none_available"
 
 
-async def test_credentials_best_empty_healthy(aiohttp_client):
-    """GET /api/credentials/best returns 503 when cache is ready but empty."""
+async def test_credentials_best_empty(aiohttp_client):
+    """GET /api/credentials/best returns 503 when cache is empty."""
     mgr = _make_credential_manager([])
-    mgr.is_cache_ready.return_value = True
     mgr.get_best.return_value = None
     client = await _make_client(aiohttp_client, mgr)
 
@@ -420,4 +402,57 @@ async def test_credential_routes_are_registered(app):
     assert "/api/credentials/best" in routes
     assert "/api/credentials/{name}" in routes
     assert "/api/credentials/{name}/probe" in routes
+    assert "/api/credentials/{name}/probe-result" in routes
     assert "/api/credentials/{name}/check" in routes
+
+
+# -- POST /api/credentials/{name}/probe-result --------------------------------
+# This is the endpoint the frontend credential-manager widget calls after running
+# claude-usage inside the utility container via a headed xterm.js WebSocket session.
+
+
+async def test_credentials_probe_result_ingests_data(aiohttp_client):
+    """POST /probe-result stores probe data and returns updated state."""
+    from claude_rts.profile_manager import CredentialManager
+
+    real_mgr = CredentialManager()
+    mgr_mock = MagicMock()
+    ingested = _make_state("acct-alice", usage_5hr_pct=55.0)
+    mgr_mock.ingest_probe_result.return_value = ingested
+    client = await _make_client(aiohttp_client, mgr_mock)
+
+    payload = {
+        "five_hour_pct": 55.0,
+        "five_hour_resets": "1h 30m",
+        "seven_day_pct": 30.0,
+        "seven_day_resets": "Apr 7, 3pm (UTC)",
+    }
+    resp = await client.post("/api/credentials/acct-alice/probe-result", json=payload)
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["name"] == "acct-alice"
+    assert data["usage_5hr_pct"] == 55.0
+    mgr_mock.ingest_probe_result.assert_called_once_with("acct-alice", payload)
+
+
+async def test_credentials_probe_result_invalid_name(aiohttp_client):
+    """POST /probe-result with invalid profile name returns 400."""
+    mgr = _make_credential_manager([])
+    client = await _make_client(aiohttp_client, mgr)
+
+    resp = await client.post("/api/credentials/bad.name/probe-result", json={"five_hour_pct": 10.0})
+    assert resp.status == 400
+    data = await resp.json()
+    assert "Invalid" in data["error"]
+
+
+async def test_credentials_probe_result_invalid_json(aiohttp_client):
+    """POST /probe-result with non-JSON body returns 400."""
+    mgr = _make_credential_manager([])
+    client = await _make_client(aiohttp_client, mgr)
+
+    resp = await client.post("/api/credentials/acct-ok/probe-result", data="not-json",
+                             headers={"Content-Type": "application/json"})
+    assert resp.status == 400
+    data = await resp.json()
+    assert "Invalid JSON" in data["error"]
