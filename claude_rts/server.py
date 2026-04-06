@@ -18,7 +18,7 @@ from .config import read_config, write_config, list_canvases, read_canvas, write
 from .profile_manager import CredentialManager
 from .discovery import discover_hubs
 from .startup import run_startup
-from .util_container import ensure_util_container, is_util_running, list_profiles
+from .util_container import ensure_util_container
 from .sessions import SessionManager
 
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
