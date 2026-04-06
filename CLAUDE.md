@@ -67,7 +67,7 @@ claude_rts/
 ### Testing
 
 ```bash
-# Run all tests (66 tests)
+# Run all tests (137 tests)
 python -m pytest tests/ -v
 
 # Run specific test file
@@ -84,11 +84,13 @@ CLAUDE_RTS_TEST_MODE=1 python -m claude_rts
 | File | Tests | What it covers |
 |------|-------|----------------|
 | `test_discovery.py` | 6 | Docker hub discovery parsing |
-| `test_server.py` | 9 | HTTP routes, widget endpoints, route registration |
+| `test_server.py` | 7 | HTTP routes, widget endpoints, route registration |
 | `test_main.py` | 4 | CLI argument handling |
 | `test_config.py` | 23 | Config CRUD, canvas CRUD, API endpoints |
 | `test_startup.py` | 7 | Startup scripts, API endpoint |
-| `test_sessions.py` | 19 | ScrollbackBuffer, SessionManager, test puppeting API |
+| `test_sessions.py` | 30 | ScrollbackBuffer, SessionManager, test puppeting API |
+| `test_server_credentials.py` | 25 | Credential CRUD, probe-result ingest, auth endpoints |
+| `test_profile_manager.py` | 35 | CredentialState, burn rate, CredentialManager cache |
 
 #### Test puppeting API
 
