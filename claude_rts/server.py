@@ -20,6 +20,7 @@ from .util_container import ensure_util_container, discover_profiles  # noqa: E4
 from .sessions import SessionManager  # noqa: E402
 from .cards import ServiceCardRegistry, ClaudeUsageCard, TerminalCard, CardRegistry  # noqa: E402
 from .event_bus import EventBus  # noqa: E402
+from .ansi_strip import strip_ansi  # noqa: E402
 
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
@@ -659,11 +660,233 @@ async def probe_claude_usage_handler(request: web.Request) -> web.Response:
     return web.json_response({"session_id": session_id, "profile": profile})
 
 
+# ── Production Claude terminal control API ─────────────────────────────────
+
+
+async def claude_terminal_create(request: web.Request) -> web.Response:
+    """POST /api/claude/terminal/create — create a TerminalCard + PTY session."""
+    cmd = request.query.get("cmd", "").strip()
+    hub = request.query.get("hub", "")
+    container = request.query.get("container", "").strip()
+    if not cmd:
+        raise web.HTTPBadRequest(text="Missing 'cmd' query parameter")
+
+    try:
+        cols = int(request.query.get("cols", 80))
+        rows = int(request.query.get("rows", 24))
+    except ValueError:
+        raise web.HTTPBadRequest(text="'cols' and 'rows' must be integers")
+
+    # Parse optional layout hints before creating the card so they are
+    # available in to_descriptor() when the EventBus broadcast fires.
+    layout: dict = {}
+    try:
+        for key in ("x", "y", "w", "h"):
+            val = request.query.get(key)
+            if val is not None:
+                layout[key] = int(val)
+    except ValueError:
+        raise web.HTTPBadRequest(text="Layout params (x, y, w, h) must be integers")
+
+    mgr: SessionManager = request.app["session_manager"]
+    card_registry: CardRegistry = request.app["card_registry"]
+
+    card = TerminalCard(
+        session_manager=mgr,
+        cmd=cmd,
+        hub=hub or None,
+        container=container or None,
+        layout=layout,
+    )
+    try:
+        await card.start()
+        card_registry.register(card)
+    except Exception:
+        logger.exception("claude_terminal_create: failed for cmd={!r}", cmd)
+        return web.json_response({"error": "Failed to spawn terminal"}, status=500)
+
+    # Resize if non-default dimensions requested
+    if cols != 80 or rows != 24:
+        try:
+            card.session.pty.setwinsize(rows, cols)
+        except Exception:
+            pass
+
+    desc = card.to_descriptor()
+
+    logger.info("claude_terminal_create: created {} for cmd={!r}", card.session_id, cmd)
+    return web.json_response(desc)
+
+
+async def claude_terminal_send(request: web.Request) -> web.Response:
+    """POST /api/claude/terminal/{id}/send — write text to PTY."""
+    card_id = request.match_info["id"]
+    card_registry: CardRegistry = request.app["card_registry"]
+    card = card_registry.get_terminal(card_id)
+    if not card or not card.alive:
+        raise web.HTTPNotFound(text="Terminal not found")
+
+    text = await request.text()
+    card.session.pty.write(text)
+    # Touch last_client_time to prevent orphan reaping
+    card.session.last_client_time = time.monotonic()
+
+    return web.json_response({"status": "ok", "sent": len(text)})
+
+
+async def claude_terminal_read(request: web.Request) -> web.Response:
+    """GET /api/claude/terminal/{id}/read — return scrollback (optionally ANSI-stripped)."""
+    card_id = request.match_info["id"]
+    card_registry: CardRegistry = request.app["card_registry"]
+    card = card_registry.get_terminal(card_id)
+    if not card or not card.alive:
+        raise web.HTTPNotFound(text="Terminal not found")
+
+    # Touch last_client_time to prevent orphan reaping
+    card.session.last_client_time = time.monotonic()
+
+    data = card.session.scrollback.get_all()
+    output = data.decode("utf-8", errors="replace")
+
+    do_strip = request.query.get("strip_ansi", "").lower() in ("true", "1", "yes")
+    if do_strip:
+        output = strip_ansi(output)
+
+    return web.json_response(
+        {
+            "output": output,
+            "size": len(data),
+            "total_written": card.session.scrollback.total_written,
+        }
+    )
+
+
+async def claude_terminal_status(request: web.Request) -> web.Response:
+    """GET /api/claude/terminal/{id}/status — session metadata."""
+    card_id = request.match_info["id"]
+    card_registry: CardRegistry = request.app["card_registry"]
+    card = card_registry.get_terminal(card_id)
+    if not card:
+        raise web.HTTPNotFound(text="Terminal not found")
+
+    session = card.session
+    now = time.monotonic()
+    return web.json_response(
+        {
+            "session_id": card.session_id,
+            "cmd": card.cmd,
+            "hub": card.hub,
+            "container": card.container,
+            "alive": card.alive,
+            "client_count": len(session.clients) if session else 0,
+            "scrollback_size": session.scrollback.size if session else 0,
+            "age_seconds": int(now - session.created_at) if session else 0,
+            "idle_seconds": int(now - session.last_client_time) if session else 0,
+        }
+    )
+
+
+async def claude_terminal_delete(request: web.Request) -> web.Response:
+    """DELETE /api/claude/terminal/{id} — stop card, clean up."""
+    card_id = request.match_info["id"]
+    card_registry: CardRegistry = request.app["card_registry"]
+
+    card = card_registry.get_terminal(card_id)
+    if not card:
+        raise web.HTTPNotFound(text="Terminal not found")
+
+    # Stop card (destroys PTY via SessionManager)
+    await card.stop()
+    card_registry.unregister(card_id)
+
+    logger.info("claude_terminal_delete: removed {}", card_id)
+    return web.json_response({"status": "ok"})
+
+
+async def claude_terminals_list(request: web.Request) -> web.Response:
+    """GET /api/claude/terminals — list all terminal cards."""
+    card_registry: CardRegistry = request.app["card_registry"]
+    terminals = card_registry.list_terminals()
+
+    result = []
+    now = time.monotonic()
+    for card in terminals:
+        desc = card.to_descriptor()
+        session = card.session
+        desc["alive"] = card.alive
+        if session:
+            desc["age_seconds"] = int(now - session.created_at)
+            desc["idle_seconds"] = int(now - session.last_client_time)
+            desc["scrollback_size"] = session.scrollback.size
+        result.append(desc)
+
+    return web.json_response(result)
+
+
+# ── Control WebSocket — broadcast card lifecycle to frontends ─────────────
+
+
+async def ws_control_handler(request: web.Request) -> web.WebSocketResponse:
+    """GET /ws/control — WebSocket that broadcasts card_created/card_deleted events.
+
+    The frontend connects on page load.  The server subscribes to EventBus
+    ``card:registered`` and ``card:unregistered`` and pushes JSON text frames
+    to every connected client.
+    """
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    logger.info("Control WebSocket connected from {}", request.remote)
+
+    control_clients: list = request.app["control_ws_clients"]
+    control_clients.append(ws)
+
+    try:
+        async for msg in ws:
+            # The control channel is server→client only; ignore client messages.
+            if msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
+                break
+    finally:
+        control_clients.remove(ws)
+        logger.info("Control WebSocket disconnected from {}", request.remote)
+
+    return ws
+
+
+async def _broadcast_card_event(app: web.Application, event_type: str, payload: dict) -> None:
+    """Push a card lifecycle event to all connected /ws/control clients."""
+    if event_type == "card:registered":
+        msg_type = "card_created"
+    elif event_type == "card:unregistered":
+        msg_type = "card_deleted"
+    else:
+        return
+
+    # Build the message.  For card_created we include the full descriptor
+    # so the frontend can spawn the card without a round-trip.
+    message: dict = {"type": msg_type, "card_id": payload.get("card_id"), "card_type": payload.get("card_type")}
+
+    if msg_type == "card_created":
+        card_registry: CardRegistry = app["card_registry"]
+        card = card_registry.get(payload["card_id"])
+        if card is not None and hasattr(card, "to_descriptor"):
+            message["descriptor"] = card.to_descriptor()
+
+    data = json.dumps(message)
+    clients: list = app.get("control_ws_clients", [])
+    for ws in list(clients):
+        if not ws.closed:
+            try:
+                await ws.send_str(data)
+            except Exception:
+                logger.debug("Failed to send control event to a client")
+
+
 def create_app(app_config: AppConfig, test_mode: bool = False) -> web.Application:
     app = web.Application()
     app["app_config"] = app_config
     app["test_mode"] = test_mode
     app["discovered_profiles"] = []
+    app["control_ws_clients"] = []
 
     # Static + API routes
     app.router.add_get("/", index_handler)
@@ -683,11 +906,20 @@ def create_app(app_config: AppConfig, test_mode: bool = False) -> web.Applicatio
     app.router.add_post("/api/claude-usage", claude_usage_handler)
     app.router.add_post("/api/probe/claude-usage", probe_claude_usage_handler)
 
+    # Claude terminal control API (production)
+    app.router.add_post("/api/claude/terminal/create", claude_terminal_create)
+    app.router.add_post("/api/claude/terminal/{id}/send", claude_terminal_send)
+    app.router.add_get("/api/claude/terminal/{id}/read", claude_terminal_read)
+    app.router.add_get("/api/claude/terminal/{id}/status", claude_terminal_status)
+    app.router.add_delete("/api/claude/terminal/{id}", claude_terminal_delete)
+    app.router.add_get("/api/claude/terminals", claude_terminals_list)
+
     # Session routes (must be before /ws/{hub} catch-all)
     app.router.add_get("/api/sessions", sessions_list_handler)
     app.router.add_get("/ws/session/new", session_new_handler)
     app.router.add_get("/ws/session/{session_id}", session_attach_handler)
     app.router.add_get("/ws/exec", exec_websocket_handler)
+    app.router.add_get("/ws/control", ws_control_handler)
 
     # Test puppeting API (only in test mode)
     if test_mode:
@@ -717,6 +949,14 @@ def create_app(app_config: AppConfig, test_mode: bool = False) -> web.Applicatio
         registry.register_type("claude-usage", ClaudeUsageCard)
         app["service_card_registry"] = registry
         app["card_registry"] = CardRegistry(bus=event_bus)
+
+        # Wire EventBus → /ws/control broadcast
+        async def _on_card_event(event_type: str, payload: dict) -> None:
+            await _broadcast_card_event(app, event_type, payload)
+
+        event_bus.subscribe("card:registered", _on_card_event)
+        event_bus.subscribe("card:unregistered", _on_card_event)
+
         mgr.start_orphan_reaper()
 
         # Probe tmux availability and recover existing sessions
@@ -782,6 +1022,13 @@ def create_app(app_config: AppConfig, test_mode: bool = False) -> web.Applicatio
             asyncio.create_task(_start_probe())
 
     async def on_shutdown(app: web.Application) -> None:
+        # Close all control WebSocket clients
+        clients = app.get("control_ws_clients", [])
+        for ws in list(clients):
+            if not ws.closed:
+                await ws.close()
+        clients.clear()
+
         if "card_registry" in app:
             await app["card_registry"].stop_all()
         if "service_card_registry" in app:
