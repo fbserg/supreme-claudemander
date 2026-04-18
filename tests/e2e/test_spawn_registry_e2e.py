@@ -18,22 +18,11 @@ import pytest
 # Skip module entirely if playwright is not installed
 pw = pytest.importorskip("playwright")
 
+# Shared helpers live in conftest (single source of truth — see issue #165).
+from tests.e2e.conftest import clear_canvas, open_context_menu  # noqa: E402
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def open_context_menu(page, x=500, y=500):
-    """Right-click viewport at (x, y) and wait for #context-menu visible with items."""
-    # Dismiss any leftover menu from a prior test before right-clicking,
-    # otherwise the visible menu intercepts pointer events.
-    page.evaluate("() => { if (typeof hideContextMenu === 'function') hideContextMenu(); }")
-    page.locator("#viewport").click(button="right", position={"x": x, "y": y})
-    # Wait for menu to be visible AND contain at least one item.
-    # If the right-click was intercepted by a ghost card, showContextMenu never
-    # fires and this times out with a clear error.
-    page.locator(
-        "#context-menu.visible .ctx-item[data-hub], #context-menu.visible .ctx-item[data-host-shell]"
-    ).first.wait_for(state="visible", timeout=5000)
 
 
 def count_cards_by_type(page, card_type):
@@ -73,80 +62,6 @@ def get_menu_section_headers(page):
 def get_card_count(page):
     """Return the current length of the JS cards[] array."""
     return page.evaluate("() => cards.length")
-
-
-def clear_canvas(page):
-    """Destroy all cards, clear the canvas DOM element, and reset shared state."""
-    page.evaluate(
-        """() => {
-        // Silence queued control-ws messages.  Cards destroyed below may not
-        // yet have a sessionId if the server was slow to respond; in that case
-        // _markSessionDestroyed(null) is a no-op and a delayed card_created
-        // broadcast would slip through the guard.  Keeping the handler null
-        // until after wait_for_function prevents ghost cards from appearing
-        // while we wait for the canvas to drain.
-        if (typeof controlWs !== 'undefined' && controlWs) {
-            try { controlWs.onmessage = null; } catch(e) {}
-        }
-        if (typeof cards !== 'undefined') {
-            for (const card of cards) {
-                if (typeof card.destroy === 'function') card.destroy();
-            }
-            cards.length = 0;
-        }
-        const el = document.getElementById('canvas');
-        if (el) el.innerHTML = '';
-        // Reset context menu and pan/zoom so residual DOM state cannot
-        // block the right-click handler on subsequent tests.
-        if (typeof hideContextMenu === 'function') hideContextMenu();
-        if (typeof pan === 'object' && pan !== null) { pan.x = 0; pan.y = 0; }
-        if (typeof zoom !== 'undefined') { zoom = 1; }
-        if (typeof applyTransform === 'function') applyTransform();
-        if (typeof focusedCardId !== 'undefined') { focusedCardId = null; }
-        // controlWs.onmessage intentionally left null here — re-attached
-        // in a separate evaluate() call after wait_for_function confirms the
-        // canvas is empty.
-    }"""
-    )
-    # Wait until the canvas DOM is truly empty.  Re-clear on every poll to
-    # evict ghost cards that snuck in while a card_created handler was already
-    # mid-execution when we nulled controlWs.onmessage above.
-    page.wait_for_function(
-        """() => {
-            if (typeof controlWs !== 'undefined' && controlWs) {
-                try { controlWs.onmessage = null; } catch(e) {}
-            }
-            if (typeof cards !== 'undefined' && cards.length > 0) {
-                for (const card of cards) {
-                    if (typeof card.destroy === 'function') card.destroy();
-                }
-                cards.length = 0;
-            }
-            const el = document.getElementById('canvas');
-            if (el && el.children.length > 0) el.innerHTML = '';
-            return el !== null && el.children.length === 0 &&
-                   ((typeof cards !== 'undefined') ? cards.length : 0) === 0;
-        }""",
-        timeout=3000,
-    )
-    # Re-attach the control-ws message handler now that the canvas is
-    # confirmed empty.  Any broadcast that arrives from this point on goes
-    # through the normal handleControlCardCreated guard logic.
-    page.evaluate(
-        """() => {
-        if (typeof controlWs !== 'undefined' && controlWs) {
-            try {
-                controlWs.onmessage = (ev) => {
-                    try {
-                        const msg = JSON.parse(ev.data);
-                        if (msg.type === 'card_created') handleControlCardCreated(msg);
-                        else if (msg.type === 'card_deleted') handleControlCardDeleted(msg);
-                    } catch(e) {}
-                };
-            } catch(e) {}
-        }
-    }"""
-    )
 
 
 def wait_for_new_card(page, initial_count, timeout_ms=3000):
@@ -466,10 +381,16 @@ class TestProbeProfileNetworkContract:
             probe_item = page.locator("#context-menu [data-probe-profile]").first
             if probe_item.count() == 0:
                 pytest.skip("No probe-profile row in context menu")
-            probe_item.click()
 
-            # Give the async handler time to fire the fetch
-            page.wait_for_timeout(2000)
+            # Wait for the POST to /api/probe/claude-usage to fire as a direct
+            # consequence of the click — condition-based, no fixed sleep.  The
+            # recorded_requests listener above still captures for the final
+            # assertion.
+            with page.expect_request(
+                lambda req: "probe/claude-usage" in req.url,
+                timeout=5000,
+            ):
+                probe_item.click()
         finally:
             page.remove_listener("request", record_request)
 
@@ -527,8 +448,13 @@ class TestSpawnFromSerializedMixedCanvas:
         clear_canvas(page)
         page.evaluate("() => switchCanvas('mixed-restore')")
 
-        # Wait for spawn to complete (sequential async spawns)
-        page.wait_for_timeout(2000)
+        # Wait for spawn to complete — exactly 3 cards should restore (the
+        # unknown-hub entry is silently skipped).  Condition-based: polls
+        # cards.length instead of sleeping for a fixed duration.
+        page.wait_for_function(
+            "() => typeof cards !== 'undefined' && cards.length === 3",
+            timeout=5000,
+        )
 
         total_cards = get_card_count(page)
         assert total_cards == 3, f"Expected exactly 3 cards (unknown hub skipped); got {total_cards}"
@@ -576,7 +502,12 @@ class TestSpawnFromSerializedMixedCanvas:
 
         clear_canvas(page)
         page.evaluate("() => switchCanvas('mixed-restore-clean')")
-        page.wait_for_timeout(2000)
+        # Wait for the 2-card clean canvas to finish restoring.  Condition-based
+        # on cards.length so we don't sleep past the slowest observed spawn.
+        page.wait_for_function(
+            "() => typeof cards !== 'undefined' && cards.length === 2",
+            timeout=5000,
+        )
 
         page.remove_listener("pageerror", _on_page_error)
         assert len(page_errors) == 0, f"Unexpected page error(s) during restore: {page_errors}"
@@ -612,8 +543,19 @@ class TestCanvasClaudeStalenessCheck:
         clear_canvas(page)
         page.evaluate("() => switchCanvas('cc-stale-test')")
 
-        # prepareOpts does two fetches; allow up to 5 s
-        page.wait_for_timeout(3000)
+        # prepareOpts does two sequential fetches before the card lands.  Wait
+        # for the canvas_claude card to exist AND for its sessionId to no
+        # longer equal the bogus id.  Condition-based replacement for the
+        # previous 3 s fixed sleep — fails fast with a clear timeout error if
+        # the staleness check regressed.
+        page.wait_for_function(
+            f"""() => {{
+                if (typeof cards === 'undefined' || cards.length === 0) return false;
+                const cc = cards.find(c => c.type === 'canvas_claude');
+                return cc !== undefined && cc.sessionId !== {bogus_session_id!r};
+            }}""",
+            timeout=5000,
+        )
 
         total_cards = get_card_count(page)
         assert total_cards >= 1, "Expected at least one canvas_claude card after switchCanvas"

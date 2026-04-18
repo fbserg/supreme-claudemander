@@ -19,6 +19,9 @@ import pytest
 # Skip module entirely if playwright is not installed
 pw = pytest.importorskip("playwright")
 
+# Shared helpers live in conftest (single source of truth — see issue #165).
+from tests.e2e.conftest import cleanup_non_vm_cards, refresh_vm_card  # noqa: E402
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -96,44 +99,6 @@ def save_blueprint(page, backend_port, name, blueprint_def):
     )
 
 
-def refresh_vm_card(page):
-    """Force re-render of all VM Manager widget cards on the canvas."""
-    page.evaluate(
-        """() => {
-        if (typeof cards !== 'undefined') {
-            for (const card of cards) {
-                if (card.widgetType === 'vm-manager' && typeof card.render === 'function') {
-                    card.render();
-                }
-            }
-        }
-    }"""
-    )
-    page.wait_for_timeout(1500)
-
-
-def cleanup_non_vm_cards(page):
-    """Remove all cards except VM Manager widgets to prevent overlap issues.
-
-    Terminal cards spawned by earlier tests can intercept pointer events
-    on the VM Manager card.  This helper destroys them.
-    """
-    page.evaluate(
-        """() => {
-        if (typeof cards === 'undefined') return;
-        const toRemove = [];
-        for (let i = cards.length - 1; i >= 0; i--) {
-            if (cards[i].widgetType !== 'vm-manager') {
-                if (typeof cards[i].destroy === 'function') cards[i].destroy();
-                toRemove.push(i);
-            }
-        }
-        for (const idx of toRemove) cards.splice(idx, 1);
-    }"""
-    )
-    page.wait_for_timeout(300)
-
-
 def ensure_vm_card_exists(page):
     """Ensure at least one VM Manager card exists; spawn one if needed."""
     vm_cards = page.locator("[data-card-id]").filter(has=page.locator("[data-vm-search]"))
@@ -147,12 +112,22 @@ def ensure_vm_card_exists(page):
     widget_item = ctx_menu.locator('[data-widget="vm-manager"]')
     if widget_item.count() > 0:
         widget_item.click()
-        page.wait_for_timeout(2000)
+        # Wait for VM Manager card to appear in DOM (render complete => has search input).
+        try:
+            page.wait_for_function(
+                "() => document.querySelectorAll('[data-card-id] [data-vm-search]').length > 0",
+                timeout=5000,
+            )
+        except Exception:
+            pass  # Fall through to JS-direct fallback below.
     # Fallback: if context menu approach didn't spawn a card, use JS directly
     vm_cards_after = page.locator("[data-card-id]").filter(has=page.locator("[data-vm-search]"))
     if vm_cards_after.count() == 0:
         page.evaluate("() => CARD_TYPE_REGISTRY.spawn('widget', {widgetType: 'vm-manager', x: 100, y: 100})")
-        page.wait_for_timeout(2000)
+        page.wait_for_function(
+            "() => document.querySelectorAll('[data-card-id] [data-vm-search]').length > 0",
+            timeout=5000,
+        )
 
 
 # ── S1: VM Manager widget spawns from context menu ───────────────────────────
@@ -176,7 +151,12 @@ class TestVmManagerSpawn:
             if (el) el.innerHTML = '';
         }"""
         )
-        page.wait_for_timeout(500)
+        # Wait for canvas DOM to reflect the cleared state (no card elements).
+        page.wait_for_function(
+            "() => document.querySelectorAll('[data-card-id]').length === 0"
+            " && (typeof cards === 'undefined' || cards.length === 0)",
+            timeout=3000,
+        )
 
         # Right-click on viewport
         viewport = page.locator("#viewport")
@@ -190,7 +170,11 @@ class TestVmManagerSpawn:
         assert widget_item.count() > 0, "vm-manager should be in context menu"
         widget_item.click()
 
-        page.wait_for_timeout(2000)
+        # Wait for the VM Manager card to be added and rendered (search input present).
+        page.wait_for_function(
+            "() => document.querySelectorAll('[data-card-id] [data-vm-search]').length > 0",
+            timeout=5000,
+        )
 
         # Verify card appeared
         new_cards = page.locator("[data-card-id]")
@@ -355,8 +339,11 @@ class TestVmSearch:
         search_input.click()
         search_input.fill("containerB")
 
-        # Wait for search results
-        page.wait_for_timeout(500)
+        # Wait for search results to render the expected row.
+        page.wait_for_function(
+            "() => document.querySelector('[data-vm-add=\"containerB\"]') !== null",
+            timeout=3000,
+        )
         results = page.locator("[data-vm-search-results]").first
         assert results.is_visible(), "Search results should be visible"
 
@@ -364,9 +351,14 @@ class TestVmSearch:
         add_btn = page.locator('[data-vm-add="containerB"]')
         assert add_btn.count() > 0, "containerB should appear in search results"
 
-        # Click add
+        # Click add — readiness check first, then await DOM confirmation.
+        add_btn.wait_for(state="visible", timeout=3000)
         add_btn.click()
-        page.wait_for_timeout(2000)
+        # Wait for the new favorite's remove button to appear (render complete).
+        page.wait_for_function(
+            "() => document.querySelector('[data-vm-remove=\"containerB\"]') !== null",
+            timeout=5000,
+        )
 
         # Verify favorites now include containerB
         favs = get_favorites(page, backend_port)
@@ -425,8 +417,13 @@ class TestVmRemoveFavorite:
         # Click remove for web-app
         remove_btn = page.locator('[data-vm-remove="web-app"]')
         assert remove_btn.count() > 0, "Remove button for web-app should exist"
+        remove_btn.wait_for(state="visible", timeout=3000)
         remove_btn.click()
-        page.wait_for_timeout(2000)
+        # Wait for the row to leave the DOM (render reflects the removal).
+        page.wait_for_function(
+            "() => document.querySelector('[data-vm-remove=\"web-app\"]') === null",
+            timeout=5000,
+        )
 
         # Verify only db-server remains
         favs = get_favorites(page, backend_port)
@@ -480,10 +477,14 @@ class TestVmStartContainer:
         assert start_btn.count() > 0, "Start button for my-db should exist"
 
         # Click Start
+        start_btn.wait_for(state="visible", timeout=3000)
         start_btn.click()
 
-        # Wait for re-render (container start + render delay)
-        page.wait_for_timeout(3000)
+        # Wait for container state transition + VM card re-render (Start button gone).
+        page.wait_for_function(
+            "() => document.querySelector('[data-vm-start=\"my-db\"]') === null",
+            timeout=10000,
+        )
 
         # Verify container is now online via API
         containers = get_test_vm_containers(page, backend_port)
@@ -680,7 +681,13 @@ class TestVmActionsDisabledOffline:
         # Force-click even though pointer-events:none (Playwright can bypass)
         # but the JS handler checks state !== 'online' and returns early
         action_btn.dispatch_event("click")
-        page.wait_for_timeout(1000)
+        # Give the event loop a chance to process any (incorrectly) queued spawn,
+        # then confirm card count is unchanged.  We poll for a stable count
+        # rather than sleeping.
+        page.wait_for_function(
+            f"() => document.querySelectorAll('[data-card-id]').length === {initial_count}",
+            timeout=1500,
+        )
         new_count = page.locator("[data-card-id]").count()
         assert new_count == initial_count, "No new card should spawn for offline container"
 
@@ -725,9 +732,11 @@ class TestVmConfigureActions:
         # Click configure button
         configure_btn = page.locator('[data-vm-configure="my-app"]')
         assert configure_btn.count() > 0, "Configure button should exist"
+        configure_btn.wait_for(state="visible", timeout=3000)
         configure_btn.click()
 
-        page.wait_for_timeout(500)
+        # Wait for the dialog overlay to appear.
+        page.locator("div[style*='z-index: 100000']").first.wait_for(state="visible", timeout=3000)
 
         # Verify dialog appeared (fixed overlay with z-index: 100000)
         dialog = page.locator("div[style*='z-index: 100000']")
@@ -754,9 +763,14 @@ class TestVmConfigureActions:
 
         # Click Save
         save_btn = page.locator("[data-save]")
+        save_btn.wait_for(state="visible", timeout=3000)
         save_btn.click()
 
-        page.wait_for_timeout(2000)
+        # Wait for the dialog overlay to be removed from the DOM.
+        page.wait_for_function(
+            "() => document.querySelectorAll(\"div[style*='z-index: 100000']\").length === 0",
+            timeout=5000,
+        )
 
         # Verify dialog disappeared
         dialog_after = page.locator("div[style*='z-index: 100000']")
@@ -809,8 +823,10 @@ class TestVmConfigureCancel:
 
         # Open configure dialog
         configure_btn = page.locator('[data-vm-configure="cancel-test"]')
+        configure_btn.wait_for(state="visible", timeout=3000)
         configure_btn.click()
-        page.wait_for_timeout(500)
+        # Wait for the dialog overlay to appear.
+        page.locator("div[style*='z-index: 100000']").first.wait_for(state="visible", timeout=3000)
 
         # Modify textarea
         textarea = page.locator("[data-actions-json]")
@@ -818,8 +834,13 @@ class TestVmConfigureCancel:
 
         # Click Cancel
         cancel_btn = page.locator("[data-cancel]")
+        cancel_btn.wait_for(state="visible", timeout=3000)
         cancel_btn.click()
-        page.wait_for_timeout(500)
+        # Wait for the dialog overlay to be removed from the DOM.
+        page.wait_for_function(
+            "() => document.querySelectorAll(\"div[style*='z-index: 100000']\").length === 0",
+            timeout=3000,
+        )
 
         # Verify dialog closed
         dialog = page.locator("div[style*='z-index: 100000']")
@@ -871,8 +892,10 @@ class TestVmConfigureInvalidJson:
 
         # Open configure dialog
         configure_btn = page.locator('[data-vm-configure="json-test"]')
+        configure_btn.wait_for(state="visible", timeout=3000)
         configure_btn.click()
-        page.wait_for_timeout(500)
+        # Wait for the dialog overlay to appear.
+        page.locator("div[style*='z-index: 100000']").first.wait_for(state="visible", timeout=3000)
 
         # Type invalid JSON
         textarea = page.locator("[data-actions-json]")
@@ -882,10 +905,12 @@ class TestVmConfigureInvalidJson:
         alert_message = []
         page.on("dialog", lambda dialog: (alert_message.append(dialog.message), dialog.accept()))
 
-        # Click Save
+        # Click Save — the page.on("dialog", ...) handler fires synchronously
+        # when the JS alert() is invoked during this click, so by the time
+        # click() returns the alert_message list has been populated.
         save_btn = page.locator("[data-save]")
+        save_btn.wait_for(state="visible", timeout=3000)
         save_btn.click()
-        page.wait_for_timeout(500)
 
         # Verify alert fired
         assert len(alert_message) > 0, "An alert should fire for invalid JSON"
@@ -940,7 +965,13 @@ class TestVmSearchFilters:
         search_input = page.locator("[data-vm-search]").first
         search_input.click()
         search_input.fill("aa")
-        page.wait_for_timeout(500)
+        # Wait for the search results container to render with the expected rows
+        # (aaa + aac; aab is filtered because it's a favorite).
+        page.wait_for_function(
+            "() => document.querySelector('[data-vm-add=\"aaa\"]') !== null"
+            " && document.querySelector('[data-vm-add=\"aac\"]') !== null",
+            timeout=3000,
+        )
 
         # Verify search results
         add_aaa = page.locator('[data-vm-add="aaa"]')
@@ -1020,19 +1051,27 @@ class TestVmPersistence:
         vm_search = page.locator("[data-vm-search]")
         assert vm_search.count() > 0, "VM Manager card should exist before save"
 
-        # Save layout
+        # Save layout and await completion of the /api/canvases/* PUT.
         page.evaluate(
             """async () => {
-            if (typeof saveLayout === 'function') saveLayout();
+            if (typeof saveLayout === 'function') await saveLayout();
         }"""
         )
-        page.wait_for_timeout(1000)
 
         # Reload
         page.goto(f"http://localhost:{backend_port}")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector("#canvas", timeout=10000)
-        page.wait_for_timeout(3000)
+        # Wait for boot-complete signal and for the VM Manager card to be restored
+        # (search input present), rather than a fixed 3-second sleep.
+        page.wait_for_function(
+            "() => window.__claudeRtsBootComplete === true",
+            timeout=15000,
+        )
+        page.wait_for_function(
+            "() => document.querySelectorAll('[data-vm-search]').length > 0",
+            timeout=10000,
+        )
 
         # Verify VM Manager card is restored
         vm_search_after = page.locator("[data-vm-search]")
@@ -1085,10 +1124,16 @@ class TestVmStopContainer:
         assert start_btn.count() == 0, "Start button should not exist for online container"
 
         # Click Stop
+        stop_btn.wait_for(state="visible", timeout=3000)
         stop_btn.click()
 
-        # Wait for re-render (stop + render delay)
-        page.wait_for_timeout(3000)
+        # Wait for container state transition + VM card re-render: Stop button
+        # should vanish and Start button should appear.
+        page.wait_for_function(
+            "() => document.querySelector('[data-vm-stop=\"running-svc\"]') === null"
+            " && document.querySelector('[data-vm-start=\"running-svc\"]') !== null",
+            timeout=10000,
+        )
 
         # Verify container is now offline via API
         containers = get_test_vm_containers(page, backend_port)
@@ -1147,7 +1192,11 @@ class TestVmSearchMetadata:
         search_input = page.locator("[data-vm-search]").first
         search_input.click()
         search_input.fill("svc-")
-        page.wait_for_timeout(500)
+        # Wait for the search-results container to render all 3 expected rows.
+        page.wait_for_function(
+            "() => document.querySelectorAll('[data-vm-search-results] [data-vm-add]').length === 3",
+            timeout=3000,
+        )
 
         # Get all search result rows
         results = page.locator("[data-vm-search-results] [data-vm-add]")

@@ -24,6 +24,9 @@ import pytest
 # Skip module entirely if playwright is not installed
 pw = pytest.importorskip("playwright")
 
+# Shared helpers live in conftest (single source of truth — see issue #165).
+from tests.e2e.conftest import cleanup_non_vm_cards, refresh_vm_card  # noqa: E402
+
 
 # ── Markers & skip logic ─────────────────────────────────────────────────────
 
@@ -173,56 +176,22 @@ def get_favorites(page, port):
     )
 
 
-def refresh_vm_card(page):
-    """Force re-render of all VM Manager widget cards on the canvas."""
-    page.evaluate(
-        """() => {
-        if (typeof cards !== 'undefined') {
-            for (const card of cards) {
-                if (card.widgetType === 'vm-manager' && typeof card.render === 'function') {
-                    card.render();
-                }
-            }
-        }
-    }"""
-    )
-    page.wait_for_timeout(3000)
-
-
-def cleanup_non_vm_cards(page):
-    """Remove all cards except VM Manager widgets to prevent overlap issues."""
-    page.evaluate(
-        """() => {
-        if (typeof cards === 'undefined') return;
-        const toRemove = [];
-        for (let i = cards.length - 1; i >= 0; i--) {
-            if (cards[i].widgetType !== 'vm-manager') {
-                if (typeof cards[i].destroy === 'function') cards[i].destroy();
-                toRemove.push(i);
-            }
-        }
-        for (const idx of toRemove) cards.splice(idx, 1);
-    }"""
-    )
-    page.wait_for_function(
-        """() => {
-            const all = document.querySelectorAll('[data-card-id]');
-            return Array.from(all).every(
-                c => c.querySelector('[data-vm-search]') !== null
-            );
-        }""",
-        timeout=3000,
-    )
-
-
 def ensure_vm_card_exists(page):
-    """Ensure at least one VM Manager card exists; spawn one if needed."""
+    """Ensure at least one VM Manager card exists; spawn one if needed.
+
+    Condition-based: after spawning, waits for the observable
+    ``[data-vm-search]`` input to appear in the DOM rather than a fixed
+    sleep.  Removes a flaky 2-second ``wait_for_timeout`` from the critical
+    path of every test in this module (see issue #167).
+    """
     vm_cards = page.locator("[data-card-id]").filter(has=page.locator("[data-vm-search]"))
     if vm_cards.count() > 0:
         return
     # Spawn via JS directly
     page.evaluate("() => CARD_TYPE_REGISTRY.spawn('widget', {widgetType: 'vm-manager', x: 100, y: 100})")
-    page.wait_for_timeout(2000)
+    # Wait for the VM Manager card's search input — the first observable
+    # DOM element written by its async render() — instead of sleeping.
+    page.wait_for_selector("[data-vm-search]", timeout=5000)
 
 
 def docker_inspect_state(name: str) -> str:
@@ -336,15 +305,20 @@ class TestRealStartContainer:
         # Click Start
         start_btn.click()
 
-        # Wait for the container to start and the card to re-render
-        # The frontend does setTimeout(() => card.render(), 2000) after success
-        page.wait_for_timeout(4000)
+        # Wait on an observable DOM predicate — the Start button must disappear
+        # once the frontend re-renders after the successful start response.  This
+        # replaces a flat 4-second sleep with a condition-based wait (issue #172).
+        page.wait_for_function(
+            f"() => document.querySelectorAll('[data-vm-start=\"{startable_container}\"]').length === 0",
+            timeout=10000,
+        )
 
-        # Verify container is actually running via docker inspect
+        # Verify container is actually running via docker inspect (real-Docker
+        # state assertion independent of the UI re-render above).
         state = docker_inspect_state(startable_container)
         assert state == "running", f"Container should be running after start, got: {state}"
 
-        # Verify Start button is gone after re-render
+        # Verify Start button is gone after re-render (already waited above)
         start_btn_after = page.locator(f'[data-vm-start="{startable_container}"]')
         assert start_btn_after.count() == 0, "Start button should disappear after container starts"
 
@@ -440,8 +414,12 @@ class TestRealSearch:
         # Use the e2e-vm-running prefix to find our container
         search_input.fill("e2e-vm-running")
 
-        # Wait for search results
-        page.wait_for_timeout(1000)
+        # Wait for the search results container to become visible and the Add
+        # button for our target container to render (condition-based in place of
+        # a 1-second sleep — issue #172).
+        page.locator("[data-vm-search-results]").first.wait_for(state="visible", timeout=5000)
+        page.locator(f'[data-vm-add="{running_container}"]').first.wait_for(state="visible", timeout=5000)
+
         results = page.locator("[data-vm-search-results]").first
         assert results.is_visible(), "Search results should be visible"
 
@@ -451,7 +429,18 @@ class TestRealSearch:
 
         # Click add
         add_btn.click()
-        page.wait_for_timeout(2000)
+
+        # Poll the favorites API until the container appears, replacing a flat
+        # 2-second sleep (issue #172).  The Add flow: frontend PUTs favorites,
+        # then re-renders — we wait on the server-side source of truth.
+        page.wait_for_function(
+            f"""async () => {{
+                const r = await fetch('http://localhost:{backend_port}/api/vms/favorites');
+                const favs = await r.json();
+                return favs.some(f => f.name === {running_container!r});
+            }}""",
+            timeout=10000,
+        )
 
         # Verify favorites now include the container
         favs = get_favorites(page, backend_port)
