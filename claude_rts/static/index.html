@@ -102,6 +102,21 @@
     display: flex; align-items: center; justify-content: center;
   }
   .terminal-titlebar .close-btn:hover { background: #f38ba8; color: #1e1e2e; }
+  .terminal-titlebar .claude-btn {
+    width: 20px; height: 20px; border: none; background: transparent;
+    color: #cba6f7; font-size: 12px; cursor: pointer; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    margin-right: 4px;
+  }
+  .terminal-titlebar .claude-btn:hover { background: #cba6f7; color: #1e1e2e; }
+  .terminal-titlebar .claude-btn:disabled { opacity: 0.3; pointer-events: none; }
+  .terminal-titlebar .clear-session-btn {
+    padding: 2px 8px; font-size: 11px; border-radius: 3px; border: none;
+    cursor: pointer; background: #45475a; color: #cdd6f4; margin-right: 4px;
+    transition: background 0.15s;
+  }
+  .terminal-titlebar .clear-session-btn:hover { background: #89b4fa; color: #1e1e2e; }
+  .terminal-titlebar .clear-session-btn:disabled { opacity: 0.3; pointer-events: none; }
 
   .terminal-body {
     flex: 1;
@@ -169,6 +184,8 @@
     padding: 4px 0;
     z-index: 2000;
     min-width: 200px;
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
   }
   #context-menu.visible { display: block; }
@@ -418,102 +435,6 @@
   .usage-refresh-btn:hover { background: #45475a; color: #cdd6f4; }
   .usage-status { color: #585b70; font-size: 11px; text-align: center; padding: 8px 0; }
 
-  /* ── Credential manager widget ── */
-  .cred-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 0;
-    border-bottom: 1px solid #313244;
-    cursor: pointer;
-    user-select: none;
-    transition: background 0.15s;
-    border-radius: 4px;
-  }
-  .cred-row:last-of-type { border-bottom: none; }
-  .cred-row:hover { background: rgba(69,71,90,0.4); }
-  .cred-row.overburning .cred-name { color: #f38ba8; }
-  .cred-row.stale { opacity: 0.6; }
-  .cred-row.stale .cred-name { color: #585b70; }
-  .cred-icon { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
-  .cred-name { font-weight: 600; font-size: 12px; color: #cdd6f4; flex-shrink: 0; min-width: 80px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cred-bar-wrap { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .cred-burn-bar { width: 100%; height: 6px; background: #313244; border-radius: 3px; overflow: hidden; }
-  .cred-burn-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
-  .cred-stats { display: flex; justify-content: space-between; font-size: 10px; color: #a6adc8; font-family: monospace; }
-  .cred-detail {
-    background: #181825;
-    border: 1px solid #313244;
-    border-radius: 6px;
-    padding: 10px;
-    margin: 2px 0 6px 26px;
-    font-size: 11px;
-  }
-  .cred-detail-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 2px 0;
-    border-bottom: 1px solid #1e1e2e;
-  }
-  .cred-detail-row:last-child { border-bottom: none; }
-  .cred-detail-label { color: #a6adc8; }
-  .cred-detail-value { color: #cdd6f4; font-family: monospace; }
-  .cred-detail-actions {
-    display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px;
-  }
-  .cred-probe-btn, .cred-check-btn, .cred-reauth-btn {
-    background: #313244; border: 1px solid #45475a;
-    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-  }
-  .cred-probe-btn { color: #89b4fa; }
-  .cred-check-btn { color: #a6e3a1; }
-  .cred-reauth-btn { color: #f9e2af; }
-  .cred-probe-btn:hover, .cred-check-btn:hover, .cred-reauth-btn:hover { background: #45475a; }
-  .cred-probe-btn:disabled, .cred-check-btn:disabled, .cred-reauth-btn:disabled { opacity: 0.5; cursor: default; }
-  .cred-toolbar {
-    display: flex; align-items: center; gap: 8px;
-    margin-top: 8px; padding-top: 8px; border-top: 1px solid #313244;
-    flex-wrap: wrap;
-  }
-  .cred-probe-all-btn {
-    background: #313244; border: 1px solid #45475a; color: #89b4fa;
-    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-    flex-shrink: 0;
-  }
-  .cred-probe-all-btn:hover { background: #45475a; }
-  .cred-probe-all-btn:disabled { opacity: 0.5; cursor: default; }
-  .cred-add-form {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .cred-add-form input {
-    flex: 1;
-    background: #181825;
-    border: 1px solid #45475a;
-    color: #cdd6f4;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-family: monospace;
-    outline: none;
-  }
-  .cred-add-form input:focus { border-color: #cba6f7; }
-  .cred-add-form input::placeholder { color: #585b70; }
-  .cred-add-btn {
-    background: #313244; border: 1px solid #45475a; color: #a6e3a1;
-    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-    flex-shrink: 0;
-  }
-  .cred-add-btn:hover { background: #45475a; }
-  .cred-footer-msg { color: #a6adc8; font-size: 11px; margin-top: 6px; text-align: center; }
-  .cred-stale-age { font-size: 10px; color: #a6adc8; flex-shrink: 0; }
-  .cred-stale-age.warn { color: #f9e2af; }
-  .cred-stale-banner {
-    background: rgba(243,139,168,0.15); border: 1px solid #f38ba8;
-    border-radius: 6px; padding: 8px 10px; margin: 4px 0;
-    font-size: 11px; color: #f38ba8; display: flex; align-items: center; gap: 6px;
-  }
 
   /* ── Control group badge ── */
   .control-group-badge {
@@ -686,7 +607,8 @@ let IDLE_THRESHOLD_MS = 5000; // updated by settings
 // ════════════════════════════════════════════
 let cards = [];         // Card instances
 let hubs = [];          // from /api/hubs
-let hubSymbolMap = {};  // hub name -> symbol
+let hubSymbolMap = {};
+let probeProfiles = []; // from /api/config probe_profiles  // hub name -> symbol
 let pan = { x: 0, y: 0 };
 let zoom = 1;
 let isPanning = false;
@@ -888,9 +810,44 @@ viewport.addEventListener('contextmenu', (e) => {
 document.addEventListener('click', () => hideContextMenu());
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideContextMenu(); });
 
+// Context menu is built from two sources:
+//   1. `CARD_TYPE_REGISTRY.menuEntries()` — drives the "static" card-type rows
+//      (currently only Canvas Claude Code; any future card type that registers
+//      with a menuSection will be picked up automatically).
+//   2. Data-driven contributors that are dynamic per-invocation: discovered
+//      hubs, host shells, widget types, probe profiles. These still live here
+//      because they are not single card types but *factories* for one type
+//      parameterised per row.
+// All click handlers dispatch through `CARD_TYPE_REGISTRY.spawn(type, opts)`.
+// Pre-fetch blueprints for context menu. Cached on each right-click open.
+async function _refreshBlueprintCache() {
+  try {
+    const resp = await fetch('/api/blueprints');
+    if (resp.ok) window._cachedBlueprints = await resp.json();
+  } catch { /* non-fatal */ }
+}
+
 function showContextMenu(sx, sy) {
-  let html = '<div class="ctx-header">Spawn terminal</div>';
-  hubs.forEach((h, i) => {
+  // Refresh blueprint cache (non-blocking — uses cached for current render)
+  _refreshBlueprintCache();
+  // Build dynamic contributors for each menuSection.
+  const isWin = navigator.platform.startsWith('Win') || navigator.userAgent.includes('Windows');
+  const hostShells = isWin ? [
+    { id: 'powershell', label: 'PowerShell', cmd: 'powershell.exe', container: 'localhost' },
+    { id: 'cmd', label: 'Command Prompt', cmd: 'cmd.exe', container: 'localhost' },
+    { id: 'util', label: 'Utility Container', cmd: 'docker exec -it supreme-claudemander-util bash', container: 'supreme-claudemander-util' },
+  ] : [
+    { id: 'zsh', label: 'zsh', cmd: '/bin/zsh -l', container: 'localhost' },
+    { id: 'bash', label: 'bash', cmd: '/bin/bash -l', container: 'localhost' },
+    { id: 'util', label: 'Utility Container', cmd: 'docker exec -it supreme-claudemander-util bash', container: 'supreme-claudemander-util' },
+  ];
+
+  let html = '';
+  const pendingHandlers = []; // {selector, handler}
+
+  // --- Spawn terminal (one row per discovered hub) ---
+  html += '<div class="ctx-header">Spawn terminal</div>';
+  hubs.forEach((h) => {
     const sym = hubSymbolMap[h.hub] || '?';
     const detail = h.container ? ` <span style="color:#585b70;font-size:11px">(${h.container})</span>` : '';
     html += `<div class="ctx-item" data-hub="${h.hub}">
@@ -898,27 +855,40 @@ function showContextMenu(sx, sy) {
       ${h.hub}${detail}
     </div>`;
   });
+  pendingHandlers.push({
+    selector: '.ctx-item[data-hub]',
+    handler: (item) => {
+      const hub = hubs.find(h => h.hub === item.dataset.hub);
+      if (hub) CARD_TYPE_REGISTRY.spawn('terminal', { hub, x: ctxMenuCanvasPos.x, y: ctxMenuCanvasPos.y });
+    },
+  });
 
-  // Host terminal section
+  // --- Host terminal (one row per host shell) ---
   html += '<div class="ctx-header">Host terminal</div>';
-  const isWin = navigator.platform.startsWith('Win') || navigator.userAgent.includes('Windows');
-  const hostShells = isWin ? [
-    { id: 'powershell', label: 'PowerShell', cmd: 'powershell.exe' },
-    { id: 'cmd', label: 'Command Prompt', cmd: 'cmd.exe' },
-    { id: 'util', label: 'Utility Container', cmd: 'docker.exe exec -it supreme-claudemander-util bash' },
-  ] : [
-    { id: 'zsh', label: 'zsh', cmd: '/bin/zsh -l' },
-    { id: 'bash', label: 'bash', cmd: '/bin/bash -l' },
-    { id: 'util', label: 'Utility Container', cmd: 'docker exec -it supreme-claudemander-util bash' },
-  ];
   for (const shell of hostShells) {
-    html += `<div class="ctx-item" data-host-shell="${shell.id}" data-host-cmd="${shell.cmd}">
+    html += `<div class="ctx-item" data-host-shell="${shell.id}" data-host-cmd="${shell.cmd}" data-host-container="${shell.container}">
       <span class="symbol-preview" style="color:#89b4fa">H</span>
       ${shell.label}
     </div>`;
   }
+  pendingHandlers.push({
+    selector: '.ctx-item[data-host-shell]',
+    handler: (item) => {
+      const shellId = item.dataset.hostShell;
+      const shellCmd = item.dataset.hostCmd;
+      const shellContainer = item.dataset.hostContainer || 'localhost';
+      if (!hubSymbolMap[shellId]) hubSymbolMap[shellId] = 'H';
+      CARD_TYPE_REGISTRY.spawn('terminal', {
+        hub: shellId,
+        container: shellContainer,
+        exec: shellCmd,
+        x: ctxMenuCanvasPos.x,
+        y: ctxMenuCanvasPos.y,
+      });
+    },
+  });
 
-  // Widget section
+  // --- Spawn widget (one row per widget type) ---
   const widgetTypes = Object.keys(WIDGET_REGISTRY);
   if (widgetTypes.length > 0) {
     html += '<div class="ctx-header">Spawn widget</div>';
@@ -929,46 +899,162 @@ function showContextMenu(sx, sy) {
         ${def.label || wt}
       </div>`;
     }
+    pendingHandlers.push({
+      selector: '.ctx-item[data-widget]',
+      handler: (item) => {
+        CARD_TYPE_REGISTRY.spawn('widget', {
+          widgetType: item.dataset.widget,
+          x: ctxMenuCanvasPos.x,
+          y: ctxMenuCanvasPos.y,
+        });
+      },
+    });
   }
+
+  // --- Blueprints submenu (fetched from server, max 10) ---
+  // Fetching is async but we build the menu synchronously — use a cached list
+  // that refreshes on each context menu open.
+  if (window._cachedBlueprints && window._cachedBlueprints.length > 0) {
+    html += '<div class="ctx-header">Blueprints</div>';
+    for (const name of window._cachedBlueprints.slice(0, 10)) {
+      html += `<div class="ctx-item" data-blueprint="${name}">
+        <span class="symbol-preview" style="color:#f9e2af">B</span>
+        ${name}
+      </div>`;
+    }
+    pendingHandlers.push({
+      selector: '.ctx-item[data-blueprint]',
+      async: true,
+      handler: async (item) => {
+        const name = item.dataset.blueprint;
+        try {
+          const resp = await fetch('/api/blueprints/spawn', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              x: ctxMenuCanvasPos.x,
+              y: ctxMenuCanvasPos.y,
+            }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({ error: 'spawn failed' }));
+            console.error('[blueprint] spawn failed:', err);
+            return;
+          }
+          const desc = await resp.json();
+          // The BlueprintCard will appear via card_created control event
+          // but we also spawn it directly for immediate visual feedback
+          await CARD_TYPE_REGISTRY.spawn('blueprint', {
+            ...desc,
+            x: ctxMenuCanvasPos.x,
+            y: ctxMenuCanvasPos.y,
+          });
+        } catch (err) {
+          console.error('[blueprint] spawn error:', err);
+        }
+      },
+    });
+  }
+
+  // --- Claude usage probe (one row per configured profile) ---
+  if (probeProfiles.length > 0) {
+    html += '<div class="ctx-header">Claude usage probe</div>';
+    for (const profile of probeProfiles) {
+      html += `<div class="ctx-item" data-probe-profile="${profile}">
+        <span class="symbol-preview" style="color:#a6e3a1">P</span>
+        ${profile}
+      </div>`;
+    }
+    pendingHandlers.push({
+      selector: '.ctx-item[data-probe-profile]',
+      async: true,
+      handler: async (item) => {
+        const profile = item.dataset.probeProfile;
+        try {
+          const resp = await fetch(`/api/probe/claude-usage?profile=${encodeURIComponent(profile)}`, { method: 'POST' });
+          if (!resp.ok) throw new Error(await resp.text());
+          const { session_id } = await resp.json();
+          const hubName = `claude-probe-${profile}`;
+          if (!hubSymbolMap[hubName]) hubSymbolMap[hubName] = 'P';
+          await CARD_TYPE_REGISTRY.spawn('terminal', {
+            hub: hubName,
+            container: 'supreme-claudemander-util',
+            exec: null,
+            sessionId: session_id,
+            x: ctxMenuCanvasPos.x,
+            y: ctxMenuCanvasPos.y,
+            w: 960,
+            h: 640,
+          });
+        } catch (err) {
+          console.error('Failed to start claude usage probe:', err);
+        }
+      },
+    });
+  }
+
+  // --- Registry-driven card-type rows ---
+  // Walk menuEntries() and render one header+row per section. Sections already
+  // handled above (terminals, widgets) are omitted here since they are
+  // contributed data-driven above. Any other section (e.g. canvas-claude) is
+  // emitted verbatim.
+  const entries = CARD_TYPE_REGISTRY.menuEntries();
+  const handledSections = new Set(['terminals', 'widgets']);
+  const seenSections = new Set();
+  for (const entry of entries) {
+    if (handledSections.has(entry.menuSection)) continue;
+    if (!seenSections.has(entry.menuSection)) {
+      // Title-case the section name for the header. E.g. "canvas-claude"
+      // becomes "Canvas Claude".
+      const headerText = entry.menuSection
+        .split(/[-_]/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+      html += `<div class="ctx-header">${headerText}</div>`;
+      seenSections.add(entry.menuSection);
+    }
+    html += `<div class="ctx-item" data-card-type="${entry.type}">
+      <span class="symbol-preview" style="color:#cba6f7">${entry.symbol}</span>
+      ${entry.label}
+    </div>`;
+  }
+  pendingHandlers.push({
+    selector: '.ctx-item[data-card-type]',
+    async: true,
+    handler: async (item) => {
+      await CARD_TYPE_REGISTRY.spawn(item.dataset.cardType, {
+        x: ctxMenuCanvasPos.x,
+        y: ctxMenuCanvasPos.y,
+      });
+    },
+  });
 
   ctxMenu.innerHTML = html;
   ctxMenu.style.left = sx + 'px';
   ctxMenu.style.top = sy + 'px';
   ctxMenu.classList.add('visible');
 
-  ctxMenu.querySelectorAll('.ctx-item[data-hub]').forEach(item => {
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const hubName = item.dataset.hub;
-      const hub = hubs.find(h => h.hub === hubName);
-      if (hub) spawnCard(hub, ctxMenuCanvasPos.x, ctxMenuCanvasPos.y);
-      hideContextMenu();
-    });
-  });
+  // Clamp menu position so it doesn't overflow the viewport
+  const menuRect = ctxMenu.getBoundingClientRect();
+  if (menuRect.bottom > window.innerHeight) {
+    ctxMenu.style.top = Math.max(10, window.innerHeight - menuRect.height - 10) + 'px';
+  }
+  if (menuRect.right > window.innerWidth) {
+    ctxMenu.style.left = Math.max(10, window.innerWidth - menuRect.width - 10) + 'px';
+  }
 
-  ctxMenu.querySelectorAll('.ctx-item[data-host-shell]').forEach(item => {
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const shellId = item.dataset.hostShell;
-      const shellCmd = item.dataset.hostCmd;
-      const hub = { hub: shellId, container: 'localhost', exec: shellCmd };
-      // Add to hubs if not already there so symbol assignment works
-      if (!hubSymbolMap[shellId]) {
-        hubSymbolMap[shellId] = 'H';
-      }
-      spawnCard(hub, ctxMenuCanvasPos.x, ctxMenuCanvasPos.y, CARD_W, CARD_H, null, shellCmd);
-      hideContextMenu();
+  // Wire all pending click handlers in one pass.
+  for (const { selector, handler, async: isAsync } of pendingHandlers) {
+    ctxMenu.querySelectorAll(selector).forEach(item => {
+      item.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        hideContextMenu();
+        if (isAsync) await handler(item);
+        else handler(item);
+      });
     });
-  });
-
-  ctxMenu.querySelectorAll('.ctx-item[data-widget]').forEach(item => {
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const widgetType = item.dataset.widget;
-      spawnWidget(widgetType, ctxMenuCanvasPos.x, ctxMenuCanvasPos.y);
-      hideContextMenu();
-    });
-  });
+  }
 }
 
 function hideContextMenu() {
@@ -1021,6 +1107,11 @@ class Card {
     this.el = null;
     this._cancelDrag = null;
     this._cancelResize = null;
+    // Issue #151: card starring, rename, recovery, stable identity
+    this.starred = true;        // starred by default — all cards resume on reload
+    this.displayName = '';       // user-friendly label (empty = use hub/container name)
+    this.recoveryScript = '';    // shell command(s) to re-run on demand
+    this.cardUid = '';           // stable UUID across restarts, generated once at creation
   }
 
   createElement() {
@@ -1040,6 +1131,23 @@ class Card {
     titlebar.className = 'terminal-titlebar';
     titlebar.dataset.drag = this.id;
 
+    // Star toggle (issue #151)
+    const starBtn = document.createElement('button');
+    starBtn.className = 'star-btn';
+    starBtn.dataset.star = this.id;
+    starBtn.title = this.starred ? 'Starred — will resume on reload' : 'Unstarred — dormant on reload';
+    starBtn.textContent = this.starred ? '\u2605' : '\u2606';
+    starBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;color:' + (this.starred ? '#f9e2af' : '#585b70');
+    starBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.starred = !this.starred;
+      starBtn.textContent = this.starred ? '\u2605' : '\u2606';
+      starBtn.style.color = this.starred ? '#f9e2af' : '#585b70';
+      starBtn.title = this.starred ? 'Starred — will resume on reload' : 'Unstarred — dormant on reload';
+      saveLayout();
+    });
+    titlebar.appendChild(starBtn);
+
     const symbolSpan = document.createElement('span');
     symbolSpan.className = 'hub-symbol';
     symbolSpan.dataset.symbol = this.id;
@@ -1053,9 +1161,32 @@ class Card {
     badgeContainer.dataset.cgBadges = this.id;
     titlebar.appendChild(badgeContainer);
 
+    // Editable display name (issue #151)
     const nameSpan = document.createElement('span');
     nameSpan.className = 'hub-name';
-    nameSpan.textContent = this.hub;
+    nameSpan.dataset.displayName = this.id;
+    nameSpan.textContent = this.displayName || this.hub;
+    nameSpan.title = 'Double-click to rename';
+    nameSpan.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = this.displayName || this.hub || '';
+      input.style.cssText = 'background:#1e1e2e;color:#cdd6f4;border:1px solid #585b70;font-size:12px;padding:0 4px;width:120px;outline:none;border-radius:3px;';
+      const finish = () => {
+        input.removeEventListener('blur', finish);
+        const val = input.value.trim();
+        this.displayName = val;
+        nameSpan.textContent = val || this.hub;
+        if (input.parentNode) input.parentNode.replaceChild(nameSpan, input);
+        saveLayout();
+      };
+      input.addEventListener('blur', finish);
+      input.addEventListener('keydown', (ke) => { if (ke.key === 'Enter') { ke.preventDefault(); finish(); } if (ke.key === 'Escape') { input.value = this.displayName || this.hub || ''; finish(); } });
+      nameSpan.parentNode.replaceChild(input, nameSpan);
+      input.focus();
+      input.select();
+    });
     titlebar.appendChild(nameSpan);
 
     if (copyLabel > 0) {
@@ -1073,6 +1204,21 @@ class Card {
     const spacer = document.createElement('span');
     spacer.className = 'spacer';
     titlebar.appendChild(spacer);
+
+    // Recovery script button (issue #151) — visible only when recoveryScript is set
+    const recoveryBtn = document.createElement('button');
+    recoveryBtn.className = 'recovery-btn';
+    recoveryBtn.dataset.recovery = this.id;
+    recoveryBtn.title = 'Run recovery script';
+    recoveryBtn.textContent = '\u21bb';
+    recoveryBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;color:#a6e3a1;display:' + (this.recoveryScript ? 'inline' : 'none');
+    recoveryBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.recoveryScript && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(new TextEncoder().encode(this.recoveryScript + '\n'));
+      }
+    });
+    titlebar.appendChild(recoveryBtn);
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'close-btn';
@@ -1104,6 +1250,7 @@ class Card {
     // Double-click anywhere on card to zoom-to-fill
     el.addEventListener('dblclick', (e) => {
       if (e.target.closest('.close-btn')) return;
+      if (e.target.closest('.claude-btn')) return;
       zoomToCard(this);
     });
 
@@ -1215,6 +1362,11 @@ class Card {
     const data = { hub: this.hub, x: this.x, y: this.y, w: this.w, h: this.h, type: this.type, controlGroups: this.controlGroupNums.length > 0 ? [...this.controlGroupNums] : undefined };
     if (this.execCmd) data.exec = this.execCmd;
     if (this.sessionId) data.session_id = this.sessionId;
+    // Issue #151: persist starring, rename, recovery, stable identity
+    if (!this.starred) data.starred = false;
+    if (this.displayName) data.displayName = this.displayName;
+    if (this.recoveryScript) data.recoveryScript = this.recoveryScript;
+    if (this.cardUid) data.cardUid = this.cardUid;
     return data;
   }
 
@@ -1229,11 +1381,199 @@ class Card {
 }
 
 // ════════════════════════════════════════════
+// CARD_TYPE_REGISTRY
+// ════════════════════════════════════════════
+// Single dispatcher for card creation, deserialization, and menu generation.
+// Each card class self-registers immediately after its definition by calling
+// CARD_TYPE_REGISTRY.register(typeName, { cardClass, label, symbol, defaultSize, menuSection, prepareOpts }).
+//
+// - spawn(typeName, opts): generic mount path — optionally runs the registered
+//   `prepareOpts(opts)` hook (which may be async), constructs the class, appends
+//   to the canvas, wires up drag/resize, runs onInit, refreshes minimap + hub
+//   count, and returns the mounted card. This is the single entry point for all
+//   card creation — context menu, MCP control-ws, layout restore, and layoutGrid
+//   all route through here.
+//
+// - prepareOpts(opts) (optional, per-type): async hook that transforms / enriches
+//   the caller's opts before the card is constructed. Used for type-specific
+//   preparation such as hub-symbol lookup, canvas-claude session staleness
+//   probes, or priority-profile resolution. Returning `null` aborts the spawn.
+//   Returning an object replaces `opts` entirely; mutating and returning nothing
+//   (or `undefined`) keeps the mutated version.
+//
+// - deserialize(data): dispatches to `<CardClass>.fromSerialized(data)` using
+//   data.type as the key. Legacy layout entries that have no `type` field but do
+//   carry a `hub` field are treated as terminals (pre-type-field compatibility).
+//   Unknown type -> logs a warning and returns null so callers can skip the entry.
+//   NOTE: deserialize() does NOT run prepareOpts — it rebuilds the card from the
+//   already-validated serialized form. Callers that need the full async prep
+//   path (e.g. canvas-claude reload) should call `spawn()` with the layout entry
+//   as opts instead.
+//
+// - menuEntries(): returns an array of
+//   `{type, label, symbol, defaultSize, menuSection}` for every registered type
+//   that opted in to menu display (i.e. has a truthy `menuSection`). Preserves
+//   registration order. Consumed by `showContextMenu()` to drive the
+//   "Canvas Claude Code" section and any future menu-visible card types.
+//
+// Adding a new card type requires only two things:
+//   1. define the class (with a `static fromSerialized(data)`)
+//   2. call CARD_TYPE_REGISTRY.register(...) once after the class body
+// No other file or call-site changes are needed.
+const CARD_TYPE_REGISTRY = {
+  _types: {},
+  _order: [],
+
+  register(typeName, entry) {
+    if (!typeName || typeof typeName !== 'string') {
+      console.warn('CARD_TYPE_REGISTRY.register: invalid typeName', typeName);
+      return;
+    }
+    if (!entry || typeof entry.cardClass !== 'function') {
+      console.warn('CARD_TYPE_REGISTRY.register: "%s" missing cardClass', typeName);
+      return;
+    }
+    if (this._types[typeName]) {
+      console.warn('CARD_TYPE_REGISTRY.register: replacing existing entry for "%s"', typeName);
+    } else {
+      this._order.push(typeName);
+    }
+    // Use nullish checks (not `||`) so intentional empty values are preserved.
+    // LoaderCard registers with `symbol: ''` on purpose — `||` would rewrite
+    // that to `'?'`. `label: ''` and an explicit `menuSection: ''` are
+    // similarly honoured if a caller passes them.
+    this._types[typeName] = {
+      cardClass: entry.cardClass,
+      label: entry.label != null ? entry.label : typeName,
+      symbol: entry.symbol != null ? entry.symbol : '?',
+      defaultSize: entry.defaultSize != null ? entry.defaultSize : { w: CARD_W, h: CARD_H },
+      menuSection: entry.menuSection != null ? entry.menuSection : null,
+      prepareOpts: typeof entry.prepareOpts === 'function' ? entry.prepareOpts : null,
+    };
+  },
+
+  get(typeName) {
+    return this._types[typeName] || null;
+  },
+
+  has(typeName) {
+    return Object.prototype.hasOwnProperty.call(this._types, typeName);
+  },
+
+  // Generic mount path. Runs the per-type `prepareOpts` hook (if any),
+  // constructs the card, appends it to the canvas, wires up drag/resize, runs
+  // onInit, and refreshes minimap + hub count. Returns a Promise that resolves
+  // to the mounted card instance, or null on unknown type / aborted prep. If
+  // the caller omits `w` and/or `h`, the registry's `defaultSize` for this
+  // type is applied.
+  async spawn(typeName, opts) {
+    const entry = this._types[typeName];
+    if (!entry) {
+      console.warn('CARD_TYPE_REGISTRY.spawn: unknown type "%s"', typeName);
+      return null;
+    }
+    let mergedOpts = { ...(opts || {}) };
+    if (entry.prepareOpts) {
+      try {
+        const result = await entry.prepareOpts(mergedOpts);
+        if (result === null) return null; // hook aborted
+        if (result && typeof result === 'object') mergedOpts = result;
+      } catch (err) {
+        console.warn('CARD_TYPE_REGISTRY.spawn: prepareOpts for "%s" threw: %o', typeName, err);
+        return null;
+      }
+    }
+    if (mergedOpts.w == null) mergedOpts.w = entry.defaultSize.w;
+    if (mergedOpts.h == null) mergedOpts.h = entry.defaultSize.h;
+    const card = new entry.cardClass(mergedOpts);
+    // Apply savedControlGroups before _mount so its badge-update path fires.
+    if (Array.isArray(mergedOpts.controlGroups) && mergedOpts.controlGroups.length > 0) {
+      card.controlGroupNums = [...mergedOpts.controlGroups];
+    }
+    return this._mount(card);
+  },
+
+  // Mount an already-constructed card onto the canvas. Split out from spawn()
+  // so deserialize() and future migration call-sites can reuse the same path.
+  _mount(card) {
+    if (!card) return null;
+    card.createElement();
+    canvas.appendChild(card.el);
+    cards.push(card);
+    if (typeof card.setupDrag === 'function') card.setupDrag();
+    if (typeof card.setupResize === 'function') card.setupResize();
+    if (typeof card.onInit === 'function') card.onInit();
+    if (Array.isArray(card.controlGroupNums) && card.controlGroupNums.length > 0) {
+      if (typeof updateControlGroupBadges === 'function') updateControlGroupBadges(card);
+    }
+    if (typeof drawMinimap === 'function') drawMinimap();
+    if (typeof updateHubCount === 'function') updateHubCount();
+    return card;
+  },
+
+  // Reconstruct a card instance from a serialized layout entry. Does NOT mount
+  // the card — returns the bare instance (or null). Callers decide whether to
+  // push through _mount() or hand off to a specialised spawn helper.
+  deserialize(data) {
+    if (!data || typeof data !== 'object') {
+      console.warn('CARD_TYPE_REGISTRY.deserialize: invalid data', data);
+      return null;
+    }
+    // Legacy layouts: entries without an explicit `type` but carrying a `hub`
+    // field are pre-type-field terminal cards.
+    let typeName = data.type;
+    if (!typeName && data.hub) typeName = 'terminal';
+    if (!typeName) {
+      console.warn('CARD_TYPE_REGISTRY.deserialize: entry has no type and no hub, skipping');
+      return null;
+    }
+    const entry = this._types[typeName];
+    if (!entry) {
+      console.warn('CARD_TYPE_REGISTRY: unknown type "%s", skipping', typeName);
+      return null;
+    }
+    if (typeof entry.cardClass.fromSerialized !== 'function') {
+      console.warn('CARD_TYPE_REGISTRY: "%s" has no static fromSerialized, skipping', typeName);
+      return null;
+    }
+    try {
+      return entry.cardClass.fromSerialized(data);
+    } catch (err) {
+      console.warn('CARD_TYPE_REGISTRY: fromSerialized threw for "%s": %o', typeName, err);
+      return null;
+    }
+  },
+
+  // Returns menu-visible entries in registration order. LoaderCard and other
+  // transient types register without a menuSection and are omitted.
+  //
+  // NOTE: intentionally unused by current call-sites — the context menu still
+  // builds its entries from hard-coded strings. This is the target consumer
+  // for the #124/#125 migration; keep the shape stable (type, label, symbol,
+  // defaultSize, menuSection).
+  menuEntries() {
+    const out = [];
+    for (const typeName of this._order) {
+      const entry = this._types[typeName];
+      if (!entry || !entry.menuSection) continue;
+      out.push({
+        type: typeName,
+        label: entry.label,
+        symbol: entry.symbol,
+        defaultSize: entry.defaultSize,
+        menuSection: entry.menuSection,
+      });
+    }
+    return out;
+  },
+};
+
+// ════════════════════════════════════════════
 // TerminalCard subclass
 // ════════════════════════════════════════════
 class TerminalCard extends Card {
   constructor(opts) {
-    super({ ...opts, type: 'terminal' });
+    super({ type: 'terminal', ...opts });
     this.execCmd = opts.exec || null;
     this.sessionId = opts.sessionId || null; // persistent session ID
     this.term = null;
@@ -1244,6 +1584,12 @@ class TerminalCard extends Card {
     this._reconnectDelay = 1000;
     this._reconnectTimer = null;
     this._intentionalClose = false;
+    // Issue #151
+    if (opts.starred != null) this.starred = opts.starred;
+    if (opts.displayName) this.displayName = opts.displayName;
+    if (opts.recoveryScript) this.recoveryScript = opts.recoveryScript;
+    if (opts.cardUid) this.cardUid = opts.cardUid;
+    if (!this.cardUid) this.cardUid = crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now().toString(36));
   }
 
   createBody() {
@@ -1253,13 +1599,50 @@ class TerminalCard extends Card {
   }
 
   onInit() {
+    if (!this.starred) {
+      // Dormant card: show placeholder instead of live terminal
+      this._renderDormant();
+      return;
+    }
     this.initTerminal();
     this.connectWs();
     this.setupInput();
     this.setupResizeObserver();
+    this.setupClaudeBtn();
+  }
+
+  _renderDormant() {
+    const body = this.el.querySelector(`[data-body="${this.id}"]`);
+    body.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-direction:column;opacity:0.5;';
+    const label = document.createElement('div');
+    label.style.cssText = 'color:#585b70;font-size:14px;margin-bottom:12px;text-align:center;';
+    label.textContent = 'Dormant — unstarred';
+    body.appendChild(label);
+    const resumeBtn = document.createElement('button');
+    resumeBtn.textContent = 'Resume';
+    resumeBtn.style.cssText = 'background:#313244;color:#cdd6f4;border:1px solid #585b70;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:13px;';
+    resumeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.starred = true;
+      // Update star button
+      const starBtn = this.el.querySelector(`[data-star="${this.id}"]`);
+      if (starBtn) { starBtn.textContent = '\u2605'; starBtn.style.color = '#f9e2af'; starBtn.title = 'Starred — will resume on reload'; }
+      // Clear dormant body and init live terminal
+      body.innerHTML = '';
+      body.style.cssText = '';
+      this.initTerminal();
+      this.connectWs();
+      this.setupInput();
+      this.setupResizeObserver();
+      this.setupClaudeBtn();
+      saveLayout();
+    });
+    body.appendChild(resumeBtn);
+    this.updateState('dead');
   }
 
   onDestroy() {
+    if (this.sessionId) _markSessionDestroyed(this.sessionId);
     if (this.ro) this.ro.disconnect();
     this._intentionalClose = true;
     if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
@@ -1284,6 +1667,7 @@ class TerminalCard extends Card {
   }
 
   connectWs() {
+    this._intentionalClose = false;
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     let wsUrl;
     if (this.sessionId) {
@@ -1291,15 +1675,17 @@ class TerminalCard extends Card {
       wsUrl = `${wsProto}//${location.host}/ws/session/${this.sessionId}`;
     } else {
       // Create new persistent session
-      const _docker = (navigator.platform.startsWith('Win') || navigator.userAgent.includes('Windows')) ? 'docker.exe' : 'docker';
+      const _docker = 'docker';
       const cmd = this.execCmd || `${_docker} exec -it -u vscode -w /workspaces/${this.hub} ${this.container} bash -l`;
       wsUrl = `${wsProto}//${location.host}/ws/session/new?cmd=${encodeURIComponent(cmd)}&hub=${encodeURIComponent(this.hub)}&container=${encodeURIComponent(this.container || '')}`;
     }
     this.ws = new WebSocket(wsUrl);
     this.ws.binaryType = 'arraybuffer';
 
+    this._sessionCreatedAt = null;
     this.ws.addEventListener('open', () => {
       this._reconnectDelay = 1000;
+      this._sessionCreatedAt = Date.now();
       this.updateState('idle');
       this.ws.send(JSON.stringify({ type: 'resize', cols: this.term.cols, rows: this.term.rows }));
     });
@@ -1317,6 +1703,7 @@ class TerminalCard extends Card {
           }
           if (msg.error === 'session_not_found') {
             this.sessionId = null;
+            this._intentionalClose = true; // prevent close event from also reconnecting
             this.connectWs(); // create new session
             return;
           }
@@ -1328,6 +1715,13 @@ class TerminalCard extends Card {
     });
     this.ws.addEventListener('close', () => {
       this.updateState('dead');
+      // If the session died within 3 seconds of creation, the command likely failed
+      // (e.g. bash not found in container). Stop reconnecting to avoid a runaway loop.
+      const sessionAge = this._sessionCreatedAt ? Date.now() - this._sessionCreatedAt : Infinity;
+      if (sessionAge < 3000) {
+        this.term.write('\r\n\x1b[31m[command failed — not reconnecting]\x1b[0m\r\n');
+        return;
+      }
       if (!this._intentionalClose) {
         this.term.write('\r\n\x1b[33m[reconnecting...]\x1b[0m\r\n');
         this._reconnectTimer = setTimeout(() => {
@@ -1416,17 +1810,424 @@ class TerminalCard extends Card {
     });
     this.ro.observe(body);
   }
+
+  setupClaudeBtn() {
+    const titlebar = this.el.querySelector(`[data-drag="${this.id}"]`);
+    const closeBtn = titlebar.querySelector('.close-btn');
+
+    const btn = document.createElement('button');
+    btn.className = 'claude-btn';
+    btn.title = 'Start Claude';
+    btn.innerHTML = '&#9654;';
+
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      try {
+        const resp = await fetch('/api/profiles/priority');
+        if (!resp.ok) {
+          this.term.write(`\r\n\x1b[31m[Failed to fetch priority profile: HTTP ${resp.status}]\x1b[0m\r\n`);
+          return;
+        }
+        const data = await resp.json();
+        const name = data.priority_profile;
+        if (!name) {
+          this.term.write('\r\n\x1b[33m[No priority profile set — configure one in the Profile Manager]\x1b[0m\r\n');
+          return;
+        }
+        if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+          this.term.write('\r\n\x1b[31m[Invalid profile name — contains unsafe characters]\x1b[0m\r\n');
+          return;
+        }
+        const command = `env CLAUDE_CONFIG_DIR=/profiles/${name} claude\n`;
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(new TextEncoder().encode(command));
+        } else {
+          this.term.write('\r\n\x1b[31m[Not connected — cannot send command]\x1b[0m\r\n');
+        }
+      } catch (err) {
+        this.term.write(`\r\n\x1b[31m[Error fetching priority profile: ${err.message}]\x1b[0m\r\n`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    titlebar.insertBefore(btn, closeBtn);
+  }
+
+  static fromSerialized(data) {
+    const card = new TerminalCard({
+      hub: data.hub,
+      container: data.container || '',
+      x: data.x || 0,
+      y: data.y || 0,
+      w: data.w,
+      h: data.h,
+      symbol: (typeof hubSymbolMap !== 'undefined' && hubSymbolMap[data.hub]) || '?',
+      exec: data.exec || null,
+      sessionId: data.session_id || null,
+      starred: data.starred != null ? data.starred : true,
+      displayName: data.displayName || '',
+      recoveryScript: data.recoveryScript || '',
+      cardUid: data.cardUid || '',
+    });
+    if (Array.isArray(data.controlGroups)) {
+      card.controlGroupNums = [...data.controlGroups];
+    }
+    return card;
+  }
 }
+
+CARD_TYPE_REGISTRY.register('terminal', {
+  cardClass: TerminalCard,
+  label: 'Terminal',
+  symbol: 'T',
+  defaultSize: { w: CARD_W, h: CARD_H },
+  menuSection: 'terminals',
+  // Resolve symbol from hubSymbolMap and normalise opts shape. Callers pass a
+  // flat `{hub, container, exec, sessionId, x, y, w, h, controlGroups}` and
+  // this hook turns it into the shape TerminalCard's constructor expects.
+  // Supports both real hubs (pre-registered in `hubs[]`) and synthetic hubs
+  // (host shells, probe-profile terminals) where the caller supplies `hub` as
+  // a string name + explicit `container`/`exec`.
+  prepareOpts(opts) {
+    // Back-compat: if caller passed a `hub` object (the pre-migration shape),
+    // flatten it into the opts record.
+    if (opts.hub && typeof opts.hub === 'object') {
+      const hubObj = opts.hub;
+      opts.hub = hubObj.hub;
+      if (opts.container == null) opts.container = hubObj.container;
+      if (opts.exec == null) opts.exec = hubObj.exec || null;
+    }
+    if (!opts.symbol) {
+      opts.symbol = (opts.hub && hubSymbolMap[opts.hub]) || '?';
+    }
+    return opts;
+  },
+});
+
+// ════════════════════════════════════════════
+// CanvasClaudeCard subclass
+// ════════════════════════════════════════════
+class CanvasClaudeCard extends TerminalCard {
+  constructor(opts) {
+    super({ ...opts, type: 'canvas_claude' });
+    this.profile = opts.profile || null;
+    this.canvasName = opts.canvasName || null;
+  }
+
+  setupClaudeBtn() {
+    // Override: no default "Start Claude" button; just a Clear button
+    const titlebar = this.el.querySelector(`[data-drag="${this.id}"]`);
+    const closeBtn = titlebar.querySelector('.close-btn');
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'clear-session-btn';
+    clearBtn.title = 'Clear conversation history';
+    clearBtn.textContent = 'Clear';
+
+    clearBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      clearBtn.disabled = true;
+      try {
+        const sid = this.sessionId;
+        if (sid) {
+          await fetch(`/api/canvas-claude/${sid}/clear`, { method: 'POST' });
+        }
+      } catch (err) {
+        console.error('Clear session failed:', err);
+      } finally {
+        clearBtn.disabled = false;
+      }
+    });
+
+    titlebar.insertBefore(clearBtn, closeBtn);
+  }
+
+  onInit() {
+    this.initTerminal();
+    this.setupInput();
+    this.setupResizeObserver();
+    this.setupClaudeBtn();
+    if (!this.sessionId) {
+      this._showNoPriorityOverlay();
+      return; // connectWs() will be called by _retryConnect() once a session exists
+    }
+    this.connectWs();
+  }
+
+  _showNoPriorityOverlay() {
+    const body = this.el.querySelector(`[data-body="${this.id}"]`);
+    body.style.position = 'relative';
+    const overlay = document.createElement('div');
+    overlay.dataset.pendingOverlay = this.id;
+    overlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#1e1e2e;z-index:10;padding:24px;text-align:center';
+
+    const icon = document.createElement('div');
+    icon.textContent = '⚠';
+    icon.style.cssText = 'font-size:26px;color:#f9e2af';
+
+    const msg = document.createElement('div');
+    msg.dataset.pendingMsg = this.id;
+    msg.style.cssText = 'color:#cdd6f4;font-size:13px;font-weight:bold';
+    msg.textContent = this.profile ? `Profile: ${this.profile}` : 'No priority profile set';
+
+    const hint = document.createElement('div');
+    hint.dataset.pendingHint = this.id;
+    hint.style.cssText = 'color:#6c7086;font-size:11px;line-height:1.6;max-width:280px';
+    hint.textContent = this.profile
+      ? 'Click Retry when the util container is running and credentials are ready.'
+      : 'Set a priority profile in the Profile Manager widget, then click Retry.';
+
+    const btn = document.createElement('button');
+    btn.dataset.pendingRetry = this.id;
+    btn.textContent = 'Retry';
+    btn.style.cssText = 'margin-top:6px;padding:5px 20px;background:#313244;border:1px solid #45475a;border-radius:6px;color:#89b4fa;font-size:12px;cursor:pointer';
+    btn.addEventListener('click', () => this._retryConnect());
+
+    overlay.append(icon, msg, hint, btn);
+    body.appendChild(overlay);
+  }
+
+  async _retryConnect() {
+    const btn = this.el.querySelector(`[data-pending-retry="${this.id}"]`);
+    const hint = this.el.querySelector(`[data-pending-hint="${this.id}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+    if (hint) { hint.style.color = '#6c7086'; hint.textContent = 'Looking up priority profile…'; }
+
+    try {
+      let profile = null;
+      const pr = await fetch('/api/profiles/priority');
+      if (pr.ok) {
+        const pd = await pr.json();
+        if (pd.priority_profile && /^[a-zA-Z0-9._-]+$/.test(pd.priority_profile)) {
+          profile = pd.priority_profile;
+        }
+      }
+
+      if (!profile) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+        if (hint) { hint.style.color = '#f38ba8'; hint.textContent = 'Still no priority profile. Set one in the Profile Manager and try again.'; }
+        return;
+      }
+
+      this.profile = profile;
+      const msgEl = this.el.querySelector(`[data-pending-msg="${this.id}"]`);
+      if (msgEl) msgEl.textContent = `Profile: ${profile}`;
+      const params = new URLSearchParams({ x: Math.round(this.x), y: Math.round(this.y), w: this.w, h: this.h });
+      params.set('profile', profile);
+      if (this.canvasName) params.set('canvas_name', this.canvasName);
+      const resp = await fetch(`/api/canvas-claude/create?${params}`, { method: 'POST' });
+      if (!resp.ok) throw new Error(await resp.text());
+      const desc = await resp.json();
+      this.sessionId = desc.session_id;
+      saveLayout();
+
+      const overlay = this.el.querySelector(`[data-pending-overlay="${this.id}"]`);
+      if (overlay) overlay.remove();
+      this._intentionalClose = false;
+      this.connectWs();
+    } catch (err) {
+      console.error('Canvas Claude retry failed:', err);
+      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      if (hint) { hint.style.color = '#f38ba8'; hint.textContent = 'Failed to start session — check the server logs and try again.'; }
+    }
+  }
+
+  connectWs() {
+    // Canvas Claude cards always connect via /ws/session/{id} (never the
+    // /ws/session/new path, which would bypass MCP config + tmux setup).
+    // If session_not_found is received, we go through the server-side
+    // create API to get a properly initialised session.
+    if (!this.sessionId) return; // no session yet — _retryConnect() will call connectWs() once one is created
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+    this._intentionalClose = false;
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${location.host}/ws/session/${this.sessionId}`;
+    this.ws = new WebSocket(wsUrl);
+    this.ws.binaryType = 'arraybuffer';
+
+    this._sessionCreatedAt = null;
+    this.ws.addEventListener('open', () => {
+      this._reconnectDelay = 1000;
+      this._sessionCreatedAt = Date.now();
+      this.updateState('idle');
+      this.ws.send(JSON.stringify({ type: 'resize', cols: this.term.cols, rows: this.term.rows }));
+    });
+    this.ws.addEventListener('message', (ev) => {
+      if (typeof ev.data === 'string') {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.session_id) {
+            this.sessionId = msg.session_id;
+            saveLayout();
+          }
+          if (msg.error === 'session_not_found') {
+            // Session died — recreate via the server API (writes MCP config + tmux).
+            this._intentionalClose = true;
+            this._recreateSession();
+            return;
+          }
+        } catch {}
+      } else if (ev.data instanceof ArrayBuffer) {
+        this.term.write(new Uint8Array(ev.data));
+        this.updateState('working');
+      }
+    });
+    this.ws.addEventListener('close', () => {
+      this.updateState('dead');
+      // If the session died within 10 s of connection, the canvas claude command
+      // likely failed (e.g. docker exec error, tmux session could not start).
+      // Stop reconnecting to avoid a runaway create loop — the user can click
+      // Retry to try again explicitly.
+      const sessionAge = this._sessionCreatedAt ? Date.now() - this._sessionCreatedAt : Infinity;
+      if (sessionAge < 10000) {
+        this.term.write('\r\n\x1b[31m[canvas claude failed to start — not reconnecting]\x1b[0m\r\n');
+        return;
+      }
+      if (!this._intentionalClose) {
+        this.term.write('\r\n\x1b[33m[reconnecting...]\x1b[0m\r\n');
+        this._reconnectTimer = setTimeout(() => {
+          this._reconnectDelay = Math.min(this._reconnectDelay * 2, 30000);
+          this.connectWs();
+        }, this._reconnectDelay);
+      } else {
+        this.term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n');
+      }
+    });
+    this.ws.addEventListener('error', () => { this.updateState('dead'); });
+  }
+
+  async _recreateSession() {
+    // If we don't have a profile, we cannot start a credentialed session.
+    // Show the overlay so the user can set up credentials explicitly.
+    if (!this.profile) {
+      this.sessionId = null;
+      saveLayout();
+      this._showNoPriorityOverlay();
+      return;
+    }
+
+    // Ask the server to create a fresh canvas claude session (MCP config + tmux).
+    try {
+      this.term.write('\r\n\x1b[33m[session expired — restarting...]\x1b[0m\r\n');
+      const params = new URLSearchParams({ x: this.x, y: this.y, w: this.w, h: this.h });
+      params.set('profile', this.profile);
+      if (this.canvasName) params.set('canvas_name', this.canvasName);
+      const resp = await fetch(`/api/canvas-claude/create?${params}`, { method: 'POST' });
+      if (!resp.ok) {
+        this.term.write('\r\n\x1b[31m[failed to restart session]\x1b[0m\r\n');
+        return;
+      }
+      const desc = await resp.json();
+      this.sessionId = desc.session_id;
+      saveLayout();
+      this._intentionalClose = false;
+      this.connectWs();
+    } catch (err) {
+      console.error('Canvas Claude recreate failed:', err);
+      this.term.write('\r\n\x1b[31m[failed to restart session]\x1b[0m\r\n');
+    }
+  }
+
+  serialize() {
+    const data = super.serialize();
+    data.type = 'canvas_claude';
+    data.profile = this.profile;
+    data.canvasName = this.canvasName;
+    return data;
+  }
+
+  // NOTE: this synchronous deserializer does NOT check whether
+  // `data.session_id` is still alive on the server — the session-staleness
+  // probe lives in the registered `prepareOpts` hook for `canvas_claude` (see
+  // the `CARD_TYPE_REGISTRY.register('canvas_claude', ...)` call below). All
+  // layout-restore / context-menu / MCP spawn paths flow through
+  // `CARD_TYPE_REGISTRY.spawn('canvas_claude', ...)` which awaits the hook
+  // before constructing the card. `fromSerialized` is called only by
+  // `CARD_TYPE_REGISTRY.deserialize()`, which currently has no consumers for
+  // canvas-claude — it is retained for symmetry with the other card types and
+  // for any future caller that wants a bare-instance path.
+  static fromSerialized(data) {
+    const card = new CanvasClaudeCard({
+      hub: data.hub || 'canvas-claude',
+      container: data.container || 'supreme-claudemander-util',
+      x: data.x || 0,
+      y: data.y || 0,
+      w: data.w || 960,
+      h: data.h || 640,
+      symbol: 'C',
+      exec: data.exec || null,
+      sessionId: data.session_id || null,
+      profile: data.profile || null,
+      canvasName: data.canvasName || null,
+    });
+    if (Array.isArray(data.controlGroups)) {
+      card.controlGroupNums = [...data.controlGroups];
+    }
+    return card;
+  }
+}
+
+CARD_TYPE_REGISTRY.register('canvas_claude', {
+  cardClass: CanvasClaudeCard,
+  label: 'Canvas Claude Code',
+  symbol: 'C',
+  defaultSize: { w: 960, h: 640 },
+  menuSection: 'canvas-claude',
+  // Async prep: (a) drop stale session IDs via `/api/sessions` probe so a
+  // restarted server doesn't leave a zombie card, (b) resolve priority profile
+  // from `/api/profiles/priority` when none was passed in, (c) fill defaults
+  // for hub / container / canvasName. This is the single owner of the
+  // staleness-check contract for canvas-claude cards.
+  async prepareOpts(opts) {
+    // Staleness check: if caller supplied a sessionId, confirm it is still
+    // alive on the server before reusing it.
+    if (opts.sessionId) {
+      try {
+        const sessions = await (await fetch('/api/sessions')).json();
+        const alive = sessions.some(s => s.session_id === opts.sessionId && s.alive);
+        if (!alive) {
+          console.log(`[canvas-claude] stale session ${opts.sessionId} — will create fresh`);
+          opts.sessionId = null;
+        }
+      } catch (_) {
+        // If the session list fetch fails, assume stale and recreate.
+        opts.sessionId = null;
+      }
+    }
+    // Resolve profile from priority credential when none provided.
+    if (!opts.sessionId && !opts.profile) {
+      try {
+        const pr = await fetch('/api/profiles/priority');
+        if (pr.ok) {
+          const pd = await pr.json();
+          if (pd.priority_profile && /^[a-zA-Z0-9._-]+$/.test(pd.priority_profile)) {
+            opts.profile = pd.priority_profile;
+          }
+        }
+      } catch (_) { /* non-fatal */ }
+    }
+    if (opts.hub == null) opts.hub = 'canvas-claude';
+    if (opts.container == null) opts.container = 'supreme-claudemander-util';
+    if (opts.canvasName == null) opts.canvasName = currentCanvasName || null;
+    if (opts.symbol == null) opts.symbol = 'C';
+    return opts;
+  },
+});
 
 // ════════════════════════════════════════════
 // LoaderCard subclass
 // ════════════════════════════════════════════
-class LoaderCard {
+// LoaderCard is a transient boot card shown while the startup script runs.
+// It extends Card (#127) so it participates in the `instanceof Card` contract
+// and can round-trip through serialize()/fromSerialized(), but it still renders
+// its own minimal DOM (no terminal titlebar, no drag/resize handles) — it is
+// destroyed once startup finishes and is never saved to a canvas layout.
+class LoaderCard extends Card {
   constructor({ scriptName, x, y }) {
+    super({ hub: '__loader__', container: '', x, y, w: 360, h: 140, symbol: '', type: 'loader' });
     this.scriptName = scriptName;
-    this.x = x;
-    this.y = y;
-    this.el = null;
     this.statusEl = null;
     this.error = false;
   }
@@ -1436,8 +2237,8 @@ class LoaderCard {
     el.className = 'loader-card';
     el.style.left = this.x + 'px';
     el.style.top = this.y + 'px';
-    el.style.width = '360px';
-    el.style.height = '140px';
+    el.style.width = this.w + 'px';
+    el.style.height = this.h + 'px';
     el.style.zIndex = 999;
 
     const titlebar = document.createElement('div');
@@ -1473,12 +2274,40 @@ class LoaderCard {
     this.setStatus(msg);
   }
 
+  serialize() {
+    // Loader cards are transient and never written to a saved canvas, but a
+    // valid layout object is required so LoaderCard honours the Card contract.
+    return { type: 'loader', x: this.x, y: this.y, w: this.w, h: this.h, scriptName: this.scriptName };
+  }
+
+  static fromSerialized(data) {
+    const card = new LoaderCard({
+      scriptName: data.scriptName || '',
+      x: data.x || 0,
+      y: data.y || 0,
+    });
+    if (data.w) card.w = data.w;
+    if (data.h) card.h = data.h;
+    return card;
+  }
+
   destroy() {
     if (this.el && this.el.parentNode) {
       this.el.parentNode.removeChild(this.el);
     }
   }
 }
+
+// LoaderCard is transient — it registers so that deserialize() can round-trip
+// it through the registry, but intentionally has no menuSection so it never
+// appears in the spawn context menu.
+CARD_TYPE_REGISTRY.register('loader', {
+  cardClass: LoaderCard,
+  label: 'Loader',
+  symbol: '',
+  defaultSize: { w: 360, h: 140 },
+  menuSection: null,
+});
 
 // ════════════════════════════════════════════
 // Widget registry
@@ -1511,313 +2340,413 @@ const WIDGET_REGISTRY = {
       }
     },
   },
-  'credential-manager': {
-    label: 'Credential Manager',
-    defaultRefreshInterval: 60000,
-
-    // ── Probe a single profile via a headed WebSocket session ────────────────
-    // Opens /ws/session/new with the claude-usage command (no container= so
-    // tmux-wrapping is skipped). xterm.js IS the terminal — it responds to the
-    // capability queries claude-usage sends on startup. Buffers output until
-    // the process exits, strips ANSI, extracts JSON, POSTs to probe-result.
-    async probeOne(name, utilContainerName, statusEl) {
-      const cmd = `docker.exe exec -it ${utilContainerName} claude-usage --claude-dir /profiles/${name} --json`;
-      const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // No container= param — prevents tmux wrapping, gives pexpect a real ConPTY
-      const wsUrl = `${wsProto}//${location.host}/ws/session/new?cmd=${encodeURIComponent(cmd)}`;
-
-      if (statusEl) statusEl.textContent = `Probing ${name}…`;
-
-      const output = await new Promise((resolve) => {
-        const ws = new WebSocket(wsUrl);
-        ws.binaryType = 'arraybuffer';
-        const chunks = [];
-        const timeout = setTimeout(() => { ws.close(); resolve(chunks.join('')); }, 90000);
-        ws.addEventListener('message', (ev) => {
-          if (ev.data instanceof ArrayBuffer) {
-            chunks.push(new TextDecoder().decode(ev.data));
-          }
-          // Ignore text control frames (session_id, etc.)
-        });
-        ws.addEventListener('close', () => { clearTimeout(timeout); resolve(chunks.join('')); });
-        ws.addEventListener('error', () => { clearTimeout(timeout); resolve(chunks.join('')); });
-      });
-
-      // Strip ANSI escape sequences and carriage returns
-      const clean = output.replace(/\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').replace(/\r/g, '').trim();
-      const jsonStart = clean.indexOf('{');
-      const jsonEnd = clean.lastIndexOf('}');
-      if (jsonStart < 0 || jsonEnd <= jsonStart) {
-        if (statusEl) statusEl.textContent = `Probe failed for ${name} (no JSON)`;
-        return null;
-      }
-      let parsed;
-      try {
-        parsed = JSON.parse(clean.slice(jsonStart, jsonEnd + 1));
-      } catch {
-        if (statusEl) statusEl.textContent = `Probe failed for ${name} (bad JSON)`;
-        return null;
-      }
-
-      // POST result to backend cache
-      try {
-        await fetch(`/api/credentials/${encodeURIComponent(name)}/probe-result`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(parsed),
-        });
-      } catch (_) {}
-
-      return parsed;
-    },
-
+  'profiles': {
+    label: 'Profile Manager',
+    defaultRefreshInterval: 30000,
     async render(body, card) {
-      const ts = () => new Date().toLocaleTimeString();
-      const self = WIDGET_REGISTRY['credential-manager'];
-      if (!card._probingProfiles) card._probingProfiles = new Set();
-
-      function burnColor(cls) {
-        if (cls === 'overburning') return '#f38ba8';
-        if (cls === 'stale') return '#585b70';
-        if (cls === 'underburning') return '#a6e3a1';
-        return '#a6e3a1';
-      }
-
-      function getBurnStatus(cred) {
-        if (cred.health === 'stale') return { icon: '⚠️', cls: 'stale' };
-        if (cred.health === 'unknown') return { icon: '❓', cls: '' };
-        const cls = cred.burn_class || 'normal';
-        const icons = { overburning: '🔥', normal: '⚡', underburning: '✅' };
-        return { icon: icons[cls] || '✅', cls };
-      }
-
-      function renderBurnBar(pct, statusCls) {
-        const color = burnColor(statusCls);
-        const width = pct != null ? Math.min(100, Math.max(0, pct)) : 0;
-        return `<div class="cred-burn-bar"><div class="cred-burn-bar-fill" style="width:${width}%;background:${color}"></div></div>`;
-      }
-
-      function formatAgo(wallEpoch) {
-        if (wallEpoch == null) return null;
-        const secs = Math.floor(Date.now() / 1000 - wallEpoch);
-        if (secs < 60) return `${secs}s ago`;
-        if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-        return `${Math.floor(secs / 3600)}h ago`;
-      }
-
-      function buildDetailHtml(cred, statusCls) {
-        const rows = [];
-        if (cred.usage_5hr_pct != null) rows.push(['5h usage', `${cred.usage_5hr_pct.toFixed(1)}%`]);
-        if (cred.usage_daily_pct != null) rows.push(['Daily usage', `${cred.usage_daily_pct.toFixed(1)}%`]);
-        if (cred.five_hour_resets != null) rows.push(['5h reset', cred.five_hour_resets]);
-        if (cred.seven_day_resets != null) rows.push(['7d reset', cred.seven_day_resets]);
-        if (cred.burn_rate != null) rows.push(['Burn rate', `${cred.burn_rate.toFixed(1)}/hr`]);
-        if (cred.account_id) rows.push(['Account ID', cred.account_id]);
-        if (cred.health) rows.push(['Health', cred.health]);
-        const ago = formatAgo(cred.data_timestamp);
-        if (ago) rows.push(['Data', ago]);
-        let html = rows.map(([l, v]) =>
-          `<div class="cred-detail-row"><span class="cred-detail-label">${l}</span><span class="cred-detail-value">${v}</span></div>`
-        ).join('');
-        html += `<div class="cred-detail-actions">`;
-        html += `<button class="cred-probe-btn" data-cred-probe="${cred.name}">Probe usage</button>`;
-        html += `<button class="cred-check-btn" data-cred-check="${cred.name}">Health check</button>`;
-        if (statusCls === 'stale') {
-          html += `<button class="cred-reauth-btn" data-cred-reauth="${cred.name}">Re-authenticate</button>`;
-        }
-        html += `</div>`;
-        return html;
-      }
-
-      body.innerHTML = `<div class="usage-status">Loading credentials… (${ts()})</div>`;
-      card.updateState('connecting');
-
       try {
-        const resp = await fetch('/api/credentials');
+        const resp = await fetch('/api/profiles');
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        const credentials = data.credentials || [];
-        const maxDataAge = data.max_data_age || 900;
-        const utilContainerName = data.util_container_name || 'supreme-claudemander-util';
+        const profiles = await resp.json();
 
-        if (credentials.length === 0) {
-          body.innerHTML = `
-            <div class="usage-status">No credentials configured.</div>
-            <div class="cred-add-form">
-              <input type="text" class="cred-name-input" placeholder="Profile name…">
-              <button class="cred-add-btn">Add</button>
-            </div>
-            <div class="cred-footer-msg" style="display:none"></div>`;
+        if (profiles.length === 0) {
+          body.innerHTML = '<div class="widget-row"><span class="widget-label" style="color:#a6adc8">No probe profiles configured</span></div>';
           card.updateState('idle');
-        } else {
-          const enriched = credentials.map(cred => ({ ...cred, _burnStatus: getBurnStatus(cred) }));
-          const statusOrder = { overburning: 0, normal: 1, underburning: 2, stale: 3, '': 4 };
-          enriched.sort((a, b) => {
-            const so = (statusOrder[a._burnStatus.cls] ?? 4) - (statusOrder[b._burnStatus.cls] ?? 4);
-            if (so !== 0) return so;
-            return (b.burn_rate ?? -1) - (a.burn_rate ?? -1);
-          });
+          return;
+        }
 
-          const nowSec = Date.now() / 1000;
-          let html = `<div id="cred-list">`;
-          for (const cred of enriched) {
-            const { icon, cls: statusCls } = cred._burnStatus;
-            const dataAge = cred.data_timestamp != null ? nowSec - cred.data_timestamp : null;
-            const tooStale = dataAge != null && dataAge > maxDataAge;
-            const warnStale = !tooStale && dataAge != null && dataAge > 60;
-            const showValues = !tooStale && cred.data_timestamp != null;
-            const pct = showValues ? (cred.usage_5hr_pct ?? cred.usage_daily_pct ?? 0) : 0;
-            const burnRateStr = showValues && cred.burn_rate != null ? `${cred.burn_rate.toFixed(1)}/hr` : '—';
-            const resetStr = showValues && cred.five_hour_resets != null ? `5hr reset: ${cred.five_hour_resets}` : '';
-            const ago = formatAgo(cred.data_timestamp);
-            const agoClass = warnStale ? 'cred-stale-age warn' : 'cred-stale-age';
-            const rowCls = ['cred-row', statusCls].filter(Boolean).join(' ');
-            const safeId = cred.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-            const noData = cred.data_timestamp == null;
+        const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-            html += `<div class="${rowCls}" data-cred-toggle="${cred.name}">`;
-            html += `<span class="cred-icon">${icon}</span>`;
-            html += `<span class="cred-name" title="${cred.name}">${cred.name}</span>`;
-            html += `<div class="cred-bar-wrap">`;
-            if (noData) {
-              const isAutoProbing = card._probingProfiles.has(cred.name);
-              html += `<div class="cred-burn-bar"><div class="cred-burn-bar-fill" style="width:0%;background:#585b70"></div></div>`;
-              html += `<div class="cred-stats"><span style="color:#585b70">${isAutoProbing ? 'probing…' : 'no data'}</span></div>`;
-            } else {
-              html += renderBurnBar(pct, statusCls);
-              html += `<div class="cred-stats"><span>${burnRateStr}</span><span>${resetStr}</span></div>`;
-            }
-            html += `</div>`;
-            if (ago) html += `<span class="${agoClass}">${ago}</span>`;
-            html += `</div>`;
-            html += `<div class="cred-detail" id="cred-detail-${safeId}" style="display:none">`;
-            html += buildDetailHtml(cred, statusCls);
-            html += `</div>`;
+        const pctColor = (pct) => {
+          if (pct == null) return '#a6adc8';
+          if (pct < 50) return '#a6e3a1';
+          if (pct < 80) return '#f9e2af';
+          return '#f38ba8';
+        };
+
+        const pctBar = (pct) => {
+          if (pct == null) return '<span style="color:#a6adc8">—</span>';
+          const color = pctColor(pct);
+          const width = Math.min(100, Math.max(0, pct));
+          return `<div style="display:inline-flex;align-items:center;gap:6px;width:100%">
+            <div style="flex:1;height:6px;background:#313244;border-radius:3px;overflow:hidden">
+              <div style="width:${width}%;height:100%;background:${color};border-radius:3px"></div>
+            </div>
+            <span style="color:${color};min-width:36px;text-align:right">${pct.toFixed(0)}%</span>
+          </div>`;
+        };
+
+        let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+        html += '<tr style="color:#a6adc8;border-bottom:1px solid #313244">';
+        html += '<th style="text-align:left;padding:4px 6px">Profile</th>';
+        html += '<th style="text-align:left;padding:4px 6px">5h</th>';
+        html += '<th style="text-align:left;padding:4px 6px">7d</th>';
+        html += '<th style="text-align:right;padding:4px 6px">Burn/day</th>';
+        html += '<th style="text-align:right;padding:4px 6px">Resets</th>';
+        html += '<th style="text-align:center;padding:4px 6px">Priority</th>';
+        html += '</tr>';
+
+        for (const p of profiles) {
+          const rowStyle = p.is_priority ? 'background:#1e1e2e' : '';
+          html += `<tr style="${rowStyle};border-bottom:1px solid #181825">`;
+          html += `<td style="padding:4px 6px;font-weight:${p.is_priority ? 'bold' : 'normal'}">${esc(p.profile)}</td>`;
+          if (p.probe_available) {
+            html += `<td style="padding:4px 6px">${pctBar(p.five_hour_pct)}</td>`;
+            html += `<td style="padding:4px 6px">${pctBar(p.seven_day_pct)}</td>`;
+            html += `<td style="padding:4px 6px;text-align:right;color:#cdd6f4">${p.burn_rate != null ? p.burn_rate.toFixed(1) : '—'}</td>`;
+            html += `<td style="padding:4px 6px;text-align:right;color:#a6adc8;font-size:11px">${esc(p.five_hour_resets || '—')}</td>`;
+          } else {
+            html += '<td colspan="4" style="padding:4px 6px;color:#a6adc8;font-style:italic">Probing…</td>';
           }
-          html += `</div>`;
-          html += `<div class="cred-probe-status" style="min-height:1.2em;font-size:0.78em;color:#89b4fa;padding:2px 6px;"></div>`;
-          html += `<div class="cred-toolbar">`;
-          html += `<button class="cred-probe-all-btn">Probe all</button>`;
-          html += `<div class="cred-add-form" style="display:inline-flex"><input type="text" class="cred-name-input" placeholder="New profile name…"><button class="cred-add-btn">Add</button></div>`;
-          html += `</div>`;
-          html += `<div class="cred-footer-msg" style="display:none"></div>`;
-          body.innerHTML = html;
-          card.updateState('working');
+          if (p.is_priority) {
+            html += '<td style="padding:4px 6px;text-align:center;color:#a6e3a1">★</td>';
+          } else {
+            html += `<td style="padding:4px 6px;text-align:center"><button data-set-priority="${esc(p.profile)}" style="background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px">Set</button></td>`;
+          }
+          html += '</tr>';
         }
+        html += '</table>';
+        body.innerHTML = html;
 
-        const probeStatusEl = body.querySelector('.cred-probe-status');
-
-        // Toggle detail rows
-        body.querySelectorAll('[data-cred-toggle]').forEach(row => {
-          row.addEventListener('click', () => {
-            const safeId = row.getAttribute('data-cred-toggle').replace(/[^a-zA-Z0-9_-]/g, '_');
-            const detail = body.querySelector(`#cred-detail-${safeId}`);
-            if (detail) detail.style.display = detail.style.display === 'none' ? '' : 'none';
+        body.querySelectorAll('[data-set-priority]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const profile = btn.getAttribute('data-set-priority');
+            const r = await fetch('/api/profiles/priority', {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({priority_profile: profile}),
+            });
+            if (!r.ok) console.error('Failed to set priority:', r.status);
+            card.render();
           });
         });
 
-        // Per-credential Probe button
-        body.querySelectorAll('[data-cred-probe]').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const name = btn.getAttribute('data-cred-probe');
-            btn.disabled = true; btn.textContent = 'Probing…';
-            card.updateState('working');
-            await self.probeOne(name, utilContainerName, probeStatusEl);
-            await self.render(body, card);
-          });
-        });
+        card.updateState('working');
+      } catch (err) {
+        body.innerHTML = `<div class="widget-row"><span class="widget-label" style="color:#f38ba8">Error: ${err.message}</span></div>`;
+        card.updateState('dead');
+      }
+    },
+  },
+  'vm-manager': {
+    label: 'VM Manager',
+    defaultRefreshInterval: 15000,
+    async render(body, card) {
+      try {
+        const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-        // Per-credential health check button
-        body.querySelectorAll('[data-cred-check]').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const name = btn.getAttribute('data-cred-check');
-            btn.disabled = true; btn.textContent = 'Checking…';
-            try { await fetch(`/api/credentials/${encodeURIComponent(name)}/check`, { method: 'POST' }); } catch (_) {}
-            await self.render(body, card);
-          });
-        });
+        // Load favorites and discovered containers in parallel
+        const [favsResp, discoverResp, configResp] = await Promise.all([
+          fetch('/api/vms/favorites'),
+          fetch('/api/vms/discover'),
+          fetch('/api/config'),
+        ]);
+        if (!favsResp.ok) throw new Error(`Favorites: HTTP ${favsResp.status}`);
+        if (!discoverResp.ok) throw new Error(`Discover: HTTP ${discoverResp.status}`);
 
-        // Re-auth button (stale credentials)
-        body.querySelectorAll('[data-cred-reauth]').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const name = btn.getAttribute('data-cred-reauth');
-            btn.disabled = true; btn.textContent = 'Checking…';
-            try { await fetch(`/api/credentials/${encodeURIComponent(name)}/check`, { method: 'POST' }); } catch (_) {}
-            await self.render(body, card);
-          });
-        });
+        const favorites = await favsResp.json();
+        const allContainers = await discoverResp.json();
+        const config = configResp.ok ? await configResp.json() : {};
+        const priorityProfile = config.priority_profile || null;
 
-        // Probe all button — sequential to avoid hammering the util container
-        const probeAllBtn = body.querySelector('.cred-probe-all-btn');
-        if (probeAllBtn) {
-          probeAllBtn.addEventListener('click', async () => {
-            probeAllBtn.disabled = true; probeAllBtn.textContent = 'Probing…';
-            card.updateState('working');
-            const resp2 = await fetch('/api/credentials').catch(() => null);
-            const data2 = resp2 ? await resp2.json().catch(() => ({})) : {};
-            const names = (data2.credentials || []).map(c => c.name);
-            const util2 = data2.util_container_name || utilContainerName;
-            for (const name of names) {
-              await self.probeOne(name, util2, probeStatusEl);
+        // Build a lookup of discovered containers
+        const containerMap = {};
+        for (const c of allContainers) containerMap[c.name] = c;
+
+        // State indicator
+        const stateIcon = (state) => {
+          if (state === 'online') return '<span style="color:#a6e3a1" title="Online">●</span>';
+          if (state === 'starting') return '<span style="color:#f9e2af" title="Starting">●</span>';
+          return '<span style="color:#585b70" title="Offline">●</span>';
+        };
+
+        let html = '';
+
+        // ── Search / Add section ──
+        html += '<div style="padding:4px 6px;border-bottom:1px solid #313244">';
+        html += '<div style="display:flex;gap:4px;align-items:center">';
+        html += '<span style="color:#6c7086;font-size:11px">＋ Add:</span>';
+        html += '<input type="text" data-vm-search placeholder="Search containers…" style="flex:1;background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;border-radius:4px;padding:3px 6px;font-size:11px;outline:none">';
+        html += '</div>';
+        html += '<div data-vm-search-results style="max-height:120px;overflow-y:auto;margin-top:4px;display:none"></div>';
+        html += '</div>';
+
+        // ── Favorites list ──
+        if (favorites.length === 0) {
+          html += '<div class="widget-row" style="padding:8px 6px"><span class="widget-label" style="color:#a6adc8">No favorites yet. Search above to add containers.</span></div>';
+        } else {
+          html += '<div style="overflow-y:auto;max-height:400px">';
+          for (const fav of favorites) {
+            const discovered = containerMap[fav.name];
+            const missing = !discovered;
+            const state = discovered ? discovered.state : 'offline';
+            const image = discovered ? discovered.image : '';
+            const actions = fav.actions || [{ label: 'Terminal', type: 'terminal' }];
+
+            html += '<div style="padding:6px;border-bottom:1px solid #181825">';
+            html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+            html += stateIcon(missing ? 'missing' : state);
+            html += `<span style="font-weight:bold;font-size:12px;flex:1">${esc(fav.name)}</span>`;
+            if (missing) {
+              html += `<span style="color:#6c7086;font-size:10px;font-style:italic">not found</span>`;
+            } else if (state === 'offline') {
+              html += `<button data-vm-start="${esc(fav.name)}" style="background:#1e1e2e;border:1px solid #45475a;color:#a6e3a1;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:10px" title="Start container">Start</button>`;
+            } else if (state === 'online') {
+              html += `<button data-vm-stop="${esc(fav.name)}" style="background:#1e1e2e;border:1px solid #45475a;color:#f38ba8;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:10px" title="Stop container">Stop</button>`;
             }
-            if (probeStatusEl) probeStatusEl.textContent = `Probe complete — ${names.length} profile(s)`;
-            await self.render(body, card);
+            html += `<button data-vm-remove="${esc(fav.name)}" style="background:none;border:1px solid #45475a;color:#f38ba8;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px" title="Remove from favorites">✕</button>`;
+            html += '</div>';
+            if (image) {
+              html += `<div style="font-size:10px;color:#6c7086;margin-bottom:3px;padding-left:18px">${esc(image)}</div>`;
+            }
+            // Action buttons
+            html += '<div style="display:flex;gap:4px;flex-wrap:wrap;padding-left:18px">';
+            for (let i = 0; i < actions.length; i++) {
+              const act = actions[i];
+              const disabled = state !== 'online' ? 'opacity:0.4;pointer-events:none;' : '';
+              html += `<button data-vm-action="${esc(fav.name)}" data-action-idx="${i}" style="${disabled}background:#1e1e2e;border:1px solid #45475a;color:#89b4fa;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:10px">${esc(act.label)}</button>`;
+            }
+            // Configure actions button
+            html += `<button data-vm-configure="${esc(fav.name)}" style="background:none;border:1px dashed #45475a;color:#6c7086;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px" title="Configure actions">⚙</button>`;
+            html += '</div>';
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+
+        body.innerHTML = html;
+
+        // ── Search functionality ──
+        const searchInput = body.querySelector('[data-vm-search]');
+        const searchResults = body.querySelector('[data-vm-search-results]');
+        if (searchInput && searchResults) {
+          const truncate = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
+          const renderSearchResults = (q) => {
+            const favNames = new Set(favorites.map(f => f.name));
+            const matches = allContainers.filter(c => !favNames.has(c.name) && (!q || c.name.toLowerCase().includes(q)));
+            // Sort: online first, then starting, then offline
+            const stateOrder = { online: 0, starting: 1, offline: 2 };
+            matches.sort((a, b) => (stateOrder[a.state] ?? 2) - (stateOrder[b.state] ?? 2));
+            if (matches.length === 0) {
+              searchResults.innerHTML = '<div style="padding:4px 6px;color:#6c7086;font-size:11px">No matches</div>';
+            } else {
+              searchResults.innerHTML = matches.map(c =>
+                `<div style="display:flex;align-items:center;gap:6px;padding:3px 6px;cursor:pointer;font-size:11px" data-vm-add="${esc(c.name)}">
+                  ${stateIcon(c.state)} <span style="flex:1" title="${esc(c.name)}">${esc(truncate(c.name, 20))}</span>
+                  <span style="color:#6c7086;font-size:10px">${esc(truncate(c.image, 20))}</span>
+                  <span style="color:#585b70;font-size:9px">${esc(c.status || '')}</span>
+                  <span style="color:#a6e3a1;font-size:10px">+ Add</span>
+                </div>`
+              ).join('');
+            }
+            searchResults.style.display = 'block';
+          };
+          searchInput.addEventListener('focus', () => {
+            renderSearchResults(searchInput.value.trim().toLowerCase());
+          });
+          searchInput.addEventListener('input', () => {
+            const q = searchInput.value.trim().toLowerCase();
+            if (!q) { renderSearchResults(''); return; }
+            renderSearchResults(q);
+          });
+
+          // Add to favorites
+          searchResults.addEventListener('click', async (e) => {
+            const addBtn = e.target.closest('[data-vm-add]');
+            if (!addBtn) return;
+            const name = addBtn.getAttribute('data-vm-add');
+            const newFavs = [...favorites, { name, type: 'docker', actions: [] }];
+            await fetch('/api/vms/favorites', {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(newFavs),
+            });
+            card.render();
           });
         }
 
-        const addBtn = body.querySelector('.cred-add-btn');
-        const nameInput = body.querySelector('.cred-name-input');
-        const footerMsg = body.querySelector('.cred-footer-msg');
-        if (addBtn && nameInput) {
-          addBtn.addEventListener('click', async () => {
-            const name = nameInput.value.trim();
-            if (!name) { nameInput.focus(); return; }
-            addBtn.disabled = true; addBtn.textContent = '…';
+        // ── Remove from favorites ──
+        body.querySelectorAll('[data-vm-remove]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const name = btn.getAttribute('data-vm-remove');
+            const newFavs = favorites.filter(f => f.name !== name);
+            await fetch('/api/vms/favorites', {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(newFavs),
+            });
+            card.render();
+          });
+        });
+
+        // ── Start container ──
+        body.querySelectorAll('[data-vm-start]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const name = btn.getAttribute('data-vm-start');
+            btn.textContent = '⏳';
+            btn.disabled = true;
+            let failed = false;
             try {
-              const r = await fetch('/api/credentials', {
+              const r = await fetch(`/api/vms/${encodeURIComponent(name)}/start`, { method: 'POST' });
+              if (!r.ok) {
+                const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+                console.error('Failed to start:', err);
+                btn.textContent = '✗';
+                btn.title = err.error || 'Start failed';
+                btn.style.color = '#f38ba8';
+                btn.disabled = false;
+                failed = true;
+              }
+            } catch (err) {
+              console.error('Start error:', err);
+              btn.textContent = '✗';
+              btn.title = err.message || 'Start failed';
+              btn.style.color = '#f38ba8';
+              btn.disabled = false;
+              failed = true;
+            }
+            // Refresh after a short delay to let container come up
+            if (!failed) setTimeout(() => card.render(), 2000);
+          });
+        });
+
+        // ── Stop container ──
+        body.querySelectorAll('[data-vm-stop]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const name = btn.getAttribute('data-vm-stop');
+            btn.textContent = '⏳';
+            btn.disabled = true;
+            let failed = false;
+            try {
+              const r = await fetch(`/api/vms/${encodeURIComponent(name)}/stop`, { method: 'POST' });
+              if (!r.ok) {
+                const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+                console.error('Failed to stop:', err);
+                btn.textContent = '✗';
+                btn.title = err.error || 'Stop failed';
+                btn.style.color = '#f38ba8';
+                btn.disabled = false;
+                failed = true;
+              }
+            } catch (err) {
+              console.error('Stop error:', err);
+              btn.textContent = '✗';
+              btn.title = err.message || 'Stop failed';
+              btn.style.color = '#f38ba8';
+              btn.disabled = false;
+              failed = true;
+            }
+            // Refresh after a short delay to let container stop
+            if (!failed) setTimeout(() => card.render(), 2000);
+          });
+        });
+
+        // ── Action buttons (blueprint-based) ──
+        body.querySelectorAll('[data-vm-action]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const name = btn.getAttribute('data-vm-action');
+            const idx = parseInt(btn.getAttribute('data-action-idx'), 10);
+            const fav = favorites.find(f => f.name === name);
+            if (!fav) return;
+            const act = (fav.actions || [])[idx];
+            if (!act || !act.blueprint) return;
+
+            const discovered = containerMap[name];
+            if (!discovered || discovered.state !== 'online') return;
+
+            // Build context: auto-inject container name, merge action-level context
+            const context = { container: name, ...(act.context || {}) };
+
+            // Place near center of viewport
+            const vw = viewport.clientWidth;
+            const vh = viewport.clientHeight;
+            const cx = (-pan.x + vw / 2) / zoom;
+            const cy = (-pan.y + vh / 2) / zoom;
+
+            btn.textContent = '⏳';
+            btn.disabled = true;
+            try {
+              const r = await fetch('/api/blueprints/spawn', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name }),
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                  name: act.blueprint,
+                  context,
+                  x: Math.round(cx - 480 + Math.random() * 60),
+                  y: Math.round(cy - 320 + Math.random() * 60),
+                  w: 960,
+                  h: 640,
+                }),
               });
               if (!r.ok) {
-                const e = await r.json().catch(() => ({}));
-                if (footerMsg) { footerMsg.style.display = ''; footerMsg.style.color = '#f38ba8'; footerMsg.textContent = e.error || `Error ${r.status}`; }
-                addBtn.disabled = false; addBtn.textContent = 'Add';
+                const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+                console.error('Blueprint spawn failed:', err);
+                btn.textContent = '✗';
+                btn.title = err.error || err.errors?.join(', ') || 'Spawn failed';
+                btn.style.color = '#f38ba8';
+                btn.disabled = false;
                 return;
               }
-              if (footerMsg) { footerMsg.style.display = ''; footerMsg.style.color = '#a6e3a1'; footerMsg.textContent = `Profile "${name}" created — probing automatically.`; }
-              await self.render(body, card);
+              btn.textContent = act.label;
+              btn.disabled = false;
             } catch (err) {
-              if (footerMsg) { footerMsg.style.display = ''; footerMsg.style.color = '#f38ba8'; footerMsg.textContent = `Error: ${err.message}`; }
-              addBtn.disabled = false; addBtn.textContent = 'Add';
+              console.error('Blueprint spawn error:', err);
+              btn.textContent = '✗';
+              btn.title = err.message || 'Spawn failed';
+              btn.style.color = '#f38ba8';
+              btn.disabled = false;
             }
           });
-          nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click(); });
-        }
+        });
 
-        // Auto-probe: fire probes for profiles with no data or stale data (>15 min).
-        // The service card is the sole probe initiator — no other card ever calls probeOne().
-        // Probes are fire-and-forget; guard with card._probingProfiles to prevent re-entrant probes.
-        const AUTO_PROBE_STALE_SEC = 15 * 60;
-        const nowForProbe = Date.now() / 1000;
-        const toProbe = credentials.filter(cred =>
-          !card._probingProfiles.has(cred.name) &&
-          (cred.data_timestamp == null || (nowForProbe - cred.data_timestamp) > AUTO_PROBE_STALE_SEC)
-        );
-        for (const cred of toProbe) {
-          card._probingProfiles.add(cred.name);
-          (async () => {
-            await self.probeOne(cred.name, utilContainerName, probeStatusEl);
-            card._probingProfiles.delete(cred.name);
-            await self.render(body, card);
-          })();
-        }
+        // ── Configure actions ──
+        body.querySelectorAll('[data-vm-configure]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const name = btn.getAttribute('data-vm-configure');
+            const fav = favorites.find(f => f.name === name);
+            if (!fav) return;
 
+            // Simple inline editor for actions
+            const dialog = document.createElement('div');
+            dialog.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:100000';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#1e1e2e;border:1px solid #45475a;border-radius:8px;padding:16px;min-width:400px;max-width:600px;color:#cdd6f4;font-size:12px';
+            box.innerHTML = `
+              <div style="font-weight:bold;margin-bottom:8px">Configure actions for ${esc(name)}</div>
+              <div style="margin-bottom:8px;color:#6c7086;font-size:11px">Edit the JSON array of actions. Each action: { "label": "...", "blueprint": "blueprint-name", "context": { ... } }</div>
+              <textarea data-actions-json style="width:100%;height:150px;background:#11111b;border:1px solid #45475a;color:#cdd6f4;border-radius:4px;padding:8px;font-family:monospace;font-size:11px;resize:vertical">${esc(JSON.stringify(fav.actions || [], null, 2))}</textarea>
+              <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
+                <button data-cancel style="background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:4px;padding:4px 12px;cursor:pointer">Cancel</button>
+                <button data-save style="background:#89b4fa;border:none;color:#1e1e2e;border-radius:4px;padding:4px 12px;cursor:pointer;font-weight:bold">Save</button>
+              </div>
+            `;
+            dialog.appendChild(box);
+            document.body.appendChild(dialog);
+
+            dialog.querySelector('[data-cancel]').addEventListener('click', () => dialog.remove());
+            dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+            dialog.querySelector('[data-save]').addEventListener('click', async () => {
+              try {
+                const actions = JSON.parse(box.querySelector('[data-actions-json]').value);
+                const newFavs = favorites.map(f => f.name === name ? { ...f, actions } : f);
+                await fetch('/api/vms/favorites', {
+                  method: 'PUT',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify(newFavs),
+                });
+                dialog.remove();
+                card.render();
+              } catch (err) {
+                alert('Invalid JSON: ' + err.message);
+              }
+            });
+          });
+        });
+
+        card.updateState(favorites.length > 0 ? 'working' : 'idle');
       } catch (err) {
-        body.innerHTML = `<div class="widget-row"><span class="widget-label" style="color:#f38ba8">Error: ${err.message}</span></div><div class="usage-status">${ts()}</div>`;
+        body.innerHTML = `<div class="widget-row"><span class="widget-label" style="color:#f38ba8">Error: ${err.message}</span></div>`;
         card.updateState('dead');
       }
     },
@@ -1867,7 +2796,114 @@ class WidgetCard extends Card {
     data.refreshInterval = this.refreshInterval;
     return data;
   }
+
+  static fromSerialized(data) {
+    const card = new WidgetCard({
+      widgetType: data.widgetType,
+      x: data.x || 0,
+      y: data.y || 0,
+      w: data.w || 360,
+      h: data.h || 280,
+      symbol: 'W',
+      refreshInterval: data.refreshInterval,
+    });
+    return card;
+  }
 }
+
+CARD_TYPE_REGISTRY.register('widget', {
+  cardClass: WidgetCard,
+  label: 'Widget',
+  symbol: 'W',
+  defaultSize: { w: 360, h: 280 },
+  menuSection: 'widgets',
+});
+
+
+// ════════════════════════════════════════════
+// BlueprintCard — live execution log card
+// ════════════════════════════════════════════
+class BlueprintCard extends Card {
+  constructor(opts = {}) {
+    const blueprintName = opts.blueprintName || opts.blueprint_name || 'Blueprint';
+    super({
+      ...opts,
+      type: 'blueprint',
+      symbol: 'B',
+      hub: `Blueprint: ${blueprintName}`,
+      w: opts.w || 500,
+      h: opts.h || 340,
+    });
+    this.runId = opts.runId || opts.run_id || '';
+    this.blueprintName = blueprintName;
+    this.cardId = opts.cardId || opts.card_id || '';
+    this._logLines = [];
+    this._status = 'running'; // running | completed | failed
+  }
+
+  createElement() {
+    super.createElement();
+    // Create log container in body
+    const body = this.el.querySelector('.card-body');
+    if (body) {
+      body.style.overflow = 'auto';
+      body.style.fontFamily = 'monospace';
+      body.style.fontSize = '11px';
+      body.style.padding = '8px';
+      body.style.lineHeight = '1.4';
+      body.style.whiteSpace = 'pre-wrap';
+      body.style.color = '#cdd6f4';
+      body.innerHTML = '<div class="blueprint-log"></div>';
+    }
+  }
+
+  appendLog(message, ts) {
+    this._logLines.push({ message, ts });
+    const body = this.el ? this.el.querySelector('.blueprint-log') : null;
+    if (body) {
+      const line = document.createElement('div');
+      line.textContent = `[${ts ? new Date(ts).toLocaleTimeString() : '??:??:??'}] ${message}`;
+      body.appendChild(line);
+      // Auto-scroll to bottom
+      const parent = body.parentElement;
+      if (parent) parent.scrollTop = parent.scrollHeight;
+    }
+  }
+
+  setStatus(status) {
+    this._status = status;
+    const titleEl = this.el ? this.el.querySelector('.hub-name') : null;
+    if (titleEl) {
+      const icon = status === 'completed' ? ' ✓' : status === 'failed' ? ' ✗' : '';
+      titleEl.textContent = `Blueprint: ${this.blueprintName}${icon}`;
+    }
+    // Color the header
+    const header = this.el ? this.el.querySelector('.card-header') : null;
+    if (header) {
+      if (status === 'completed') header.style.borderBottom = '2px solid #a6e3a1';
+      else if (status === 'failed') header.style.borderBottom = '2px solid #f38ba8';
+    }
+  }
+
+  serialize() {
+    // Blueprints are ephemeral — don't persist in canvas layouts
+    return null;
+  }
+
+  static fromSerialized(data) {
+    // Blueprints are ephemeral — they are not restored from layouts
+    return null;
+  }
+}
+
+CARD_TYPE_REGISTRY.register('blueprint', {
+  cardClass: BlueprintCard,
+  label: 'Blueprint',
+  symbol: 'B',
+  defaultSize: { w: 500, h: 340 },
+  menuSection: null, // Not in context menu — spawned via API
+});
+
 
 // ════════════════════════════════════════════
 // Terminal state management
@@ -1888,48 +2924,10 @@ setInterval(() => {
   }
 }, 1000);
 
-// ════════════════════════════════════════════
-// Spawn a terminal card
-// ════════════════════════════════════════════
-function spawnCard(hub, x, y, w, h, savedControlGroups, execCmd, sessionId) {
-  const symbol = hubSymbolMap[hub.hub] || '?';
-  const card = new TerminalCard({ hub: hub.hub, container: hub.container, x, y, w, h, symbol, exec: execCmd || hub.exec || null, sessionId: sessionId || null });
-  if (savedControlGroups && Array.isArray(savedControlGroups)) {
-    card.controlGroupNums = [...savedControlGroups];
-  }
-  card.createElement();
-  canvas.appendChild(card.el);
-  cards.push(card);
-  card.setupDrag();
-  card.setupResize();
-  card.onInit();
-  if (card.controlGroupNums.length > 0) {
-    updateControlGroupBadges(card);
-  }
-  drawMinimap();
-  updateHubCount();
-  return card;
-}
-
-function spawnWidget(widgetType, x, y, w, h) {
-  const card = new WidgetCard({
-    widgetType,
-    x,
-    y,
-    w: w || 360,
-    h: h || 280,
-    symbol: 'W',
-  });
-  card.createElement();
-  canvas.appendChild(card.el);
-  cards.push(card);
-  card.setupDrag();
-  card.setupResize();
-  card.onInit();
-  drawMinimap();
-  updateHubCount();
-  return card;
-}
+// Card creation now flows exclusively through `CARD_TYPE_REGISTRY.spawn(type, opts)`.
+// Type-specific prep (hub symbol lookup for terminals, canvas-claude session
+// staleness probe + priority-profile resolution) lives in per-type
+// `prepareOpts` hooks registered next to each card class definition.
 
 function destroyCard(id) {
   const idx = cards.findIndex(c => c.id === id);
@@ -1955,6 +2953,56 @@ function updateHubCount() {
   const parts = [`${hubs.length} hub(s)`, `${termCount} terminal(s)`];
   if (widgetCount > 0) parts.push(`${widgetCount} widget(s)`);
   document.getElementById('hub-count').textContent = parts.join(' | ');
+}
+
+// Dispatch a saved layout entry through CARD_TYPE_REGISTRY.spawn so the full
+// type-specific prep (symbol lookup, canvas-claude session probe, profile
+// resolution) runs uniformly. Used by switchCanvas and the boot loader.
+// Terminals resolve their hub from `hubs[]` when possible; if the hub is not
+// currently discovered the entry is skipped (matching legacy behaviour).
+// Entries without a `type` but with a `hub` field are treated as terminals
+// (pre-type-field compatibility).
+async function spawnFromSerialized(s) {
+  let typeName = s.type;
+  if (!typeName && s.hub) typeName = 'terminal';
+  if (!typeName) {
+    console.warn('spawnFromSerialized: entry has no type and no hub, skipping', s);
+    return null;
+  }
+  if (typeName === 'terminal') {
+    const hub = hubs.find(h => h.hub === s.hub);
+    if (!hub) return null; // undiscovered hub — skip, like the old ladder did
+    return CARD_TYPE_REGISTRY.spawn('terminal', {
+      hub,
+      x: s.x, y: s.y, w: s.w, h: s.h,
+      exec: s.exec,
+      sessionId: s.session_id,
+      controlGroups: s.controlGroups,
+      starred: s.starred != null ? s.starred : true,
+      displayName: s.displayName || '',
+      recoveryScript: s.recoveryScript || '',
+      cardUid: s.cardUid || '',
+    });
+  }
+  if (typeName === 'widget') {
+    if (!s.widgetType) return null;
+    return CARD_TYPE_REGISTRY.spawn('widget', {
+      widgetType: s.widgetType,
+      x: s.x, y: s.y, w: s.w, h: s.h,
+      refreshInterval: s.refreshInterval,
+    });
+  }
+  if (typeName === 'canvas_claude') {
+    return CARD_TYPE_REGISTRY.spawn('canvas_claude', {
+      x: s.x, y: s.y, w: s.w, h: s.h,
+      sessionId: s.session_id,
+      profile: s.profile,
+      canvasName: s.canvasName,
+    });
+  }
+  // Unknown type: fall back to the registry so any future card type that
+  // registers itself is handled automatically.
+  return CARD_TYPE_REGISTRY.spawn(typeName, { ...s, sessionId: s.session_id });
 }
 
 // ════════════════════════════════════════════
@@ -2085,7 +3133,7 @@ function layoutGrid(hubList) {
     const row = Math.floor(i / cols);
     const x = startX + col * (CARD_W + CARD_GAP);
     const y = startY + row * (CARD_H + CARD_GAP);
-    spawnCard(hub, x, y);
+    CARD_TYPE_REGISTRY.spawn('terminal', { hub, x, y });
   });
 }
 
@@ -2097,7 +3145,7 @@ const DEFAULT_SETTINGS = {
   paste: 'ctrl-shift-v',
   rightclick: 'paste',
   idle_threshold: 5,
-  default_canvas: 'main',
+  default_canvas: 'probe-qa',
   theme: 'catppuccin-mocha',
 };
 let settings = { ...DEFAULT_SETTINGS };
@@ -2513,11 +3561,11 @@ async function switchCanvas(name) {
   const saved = await loadLayout();
   if (saved && saved.length > 0) {
     for (const s of saved) {
-      if (s.type === 'widget' && s.widgetType) {
-        spawnWidget(s.widgetType, s.x, s.y, s.w, s.h);
-      } else {
-        const hub = hubs.find(h => h.hub === s.hub);
-        if (hub) spawnCard(hub, s.x, s.y, s.w, s.h, s.controlGroups, s.exec, s.session_id);
+      // Isolate per-entry failures so one bad entry cannot abort the rest.
+      try {
+        await spawnFromSerialized(s);
+      } catch (err) {
+        console.warn('switchCanvas: restore entry failed, skipping:', s, err);
       }
     }
     rebuildControlGroupsFromCards();
@@ -2533,12 +3581,234 @@ async function switchCanvas(name) {
 }
 
 // ════════════════════════════════════════════
+// Control WebSocket — server-pushed card events
+// ════════════════════════════════════════════
+
+// Short-TTL set of session_ids that were explicitly destroyed locally.
+// Prevents a queued card_created broadcast from re-spawning a card that was
+// just deleted (e.g. during test teardown or rapid user close).
+const _recentlyDestroyedSessions = new Set();
+function _markSessionDestroyed(sessionId) {
+  if (!sessionId) return;
+  _recentlyDestroyedSessions.add(sessionId);
+  setTimeout(() => _recentlyDestroyedSessions.delete(sessionId), 5000);
+}
+
+let controlWs = null;
+let controlWsReconnectTimer = null;
+
+function connectControlWs() {
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${wsProto}//${location.host}/ws/control`;
+  controlWs = new WebSocket(url);
+
+  controlWs.addEventListener('open', () => {
+    console.log('[control-ws] connected');
+  });
+
+  controlWs.addEventListener('message', (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'card_created') {
+        handleControlCardCreated(msg);
+      } else if (msg.type === 'card_deleted') {
+        handleControlCardDeleted(msg);
+      } else if (msg.type === 'card_updated') {
+        handleControlCardUpdated(msg);
+      } else if (msg.type === 'blueprint:log') {
+        handleBlueprintLog(msg);
+      } else if (msg.type === 'blueprint:completed') {
+        handleBlueprintCompleted(msg);
+      } else if (msg.type === 'blueprint:failed') {
+        handleBlueprintFailed(msg);
+      } else if (msg.type === 'blueprint:open_widget') {
+        handleBlueprintOpenWidget(msg);
+      }
+    } catch (err) {
+      console.warn('[control-ws] bad message:', err);
+    }
+  });
+
+  controlWs.addEventListener('close', () => {
+    console.log('[control-ws] disconnected, reconnecting in 3s');
+    controlWsReconnectTimer = setTimeout(connectControlWs, 3000);
+  });
+
+  controlWs.addEventListener('error', () => {
+    // close event will follow — reconnect handled there
+  });
+}
+
+async function handleControlCardCreated(msg) {
+  const desc = msg.descriptor;
+  if (!desc) return;
+
+  // canvas_claude cards always self-create via _createAndConnect() — never spawn from
+  // the control event, which would race with the in-flight fetch and create duplicate cards.
+  if (desc.type === 'canvas_claude') return;
+
+  // Blueprint cards are spawned directly from context menu — skip the control event
+  // to avoid duplicates. Also skip container_starter (hidden cards).
+  if (desc.type === 'blueprint' || desc.type === 'container_starter') return;
+
+  // Avoid duplicates — check if a card with this session_id already exists or was
+  // recently destroyed locally (guards against queued broadcasts racing with teardown).
+  if (desc.session_id && (
+    cards.some(c => c.sessionId === desc.session_id) ||
+    _recentlyDestroyedSessions.has(desc.session_id)
+  )) return;
+
+  if (desc.type === 'terminal') {
+    const hubName = desc.hub || desc.exec || 'api-terminal';
+    const container = desc.container || '';
+
+    // Belt-and-suspenders guard: if a locally-spawned terminal with the same
+    // hub+container is already in cards[] but hasn't received its sessionId yet
+    // (card_created broadcast beat the terminal's own WS message), skip — the
+    // card exists and will assign sessionId itself.
+    if (cards.some(c =>
+      c.type === 'terminal' &&
+      c.hub === hubName &&
+      (c.container || '') === container &&
+      c.sessionId == null
+    )) return;
+
+    // Place near center of current viewport if no layout hints
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const cx = (-pan.x + vw / 2) / zoom;
+    const cy = (-pan.y + vh / 2) / zoom;
+    const x = desc.x != null ? desc.x : cx - CARD_W / 2 + Math.random() * 60;
+    const y = desc.y != null ? desc.y : cy - CARD_H / 2 + Math.random() * 60;
+
+    // Ensure hub is in the hubs array so it shows in sidebar / can be found on reload
+    if (!hubs.find(entry => entry.hub === hubName)) {
+      hubs.push({ hub: hubName, container: container, exec: desc.exec || null });
+      hubSymbolMap[hubName] = HUB_SYMBOLS[hubs.length % HUB_SYMBOLS.length];
+    }
+
+    await CARD_TYPE_REGISTRY.spawn('terminal', {
+      hub: hubName,
+      container: container,
+      exec: desc.exec || null,
+      sessionId: desc.session_id,
+      x, y,
+      w: desc.w || CARD_W,
+      h: desc.h || CARD_H,
+      starred: desc.starred != null ? desc.starred : true,
+      displayName: desc.display_name || '',
+      recoveryScript: desc.recovery_script || '',
+      cardUid: desc.cardUid || '',
+    });
+    saveLayout();
+  }
+}
+
+function handleControlCardDeleted(msg) {
+  const cardId = msg.card_id;
+  if (!cardId) return;
+
+  // Find the card by session_id (TerminalCard) or cardId (BlueprintCard)
+  let idx = cards.findIndex(c => c.sessionId === cardId);
+  if (idx === -1) idx = cards.findIndex(c => c.cardId === cardId);
+  if (idx === -1) return;
+
+  const card = cards[idx];
+  card.destroy();
+  cards.splice(idx, 1);
+  saveLayout();
+  drawMinimap();
+  updateHubCount();
+}
+
+function handleControlCardUpdated(msg) {
+  const cardId = msg.card_id;
+  if (!cardId) return;
+
+  // Find the card by session_id (TerminalCard)
+  const card = cards.find(c => c.sessionId === cardId);
+  if (!card) return;
+
+  // Update display_name if present
+  if ('display_name' in msg) {
+    card.displayName = msg.display_name;
+    const nameSpan = card.el ? card.el.querySelector(`[data-display-name="${card.id}"]`) : null;
+    if (nameSpan) nameSpan.textContent = msg.display_name || card.hub;
+  }
+
+  // Update recovery_script if present
+  if ('recovery_script' in msg) {
+    card.recoveryScript = msg.recovery_script;
+    const recoveryBtn = card.el ? card.el.querySelector(`[data-recovery="${card.id}"]`) : null;
+    if (recoveryBtn) recoveryBtn.style.display = msg.recovery_script ? 'inline' : 'none';
+  }
+
+  saveLayout();
+}
+
+// ════════════════════════════════════════════
+// Blueprint event handlers
+// ════════════════════════════════════════════
+function _findBlueprintCard(runId) {
+  return cards.find(c => c.type === 'blueprint' && c.runId === runId);
+}
+
+function handleBlueprintLog(msg) {
+  const card = _findBlueprintCard(msg.run_id);
+  if (card) card.appendLog(msg.message, msg.ts);
+}
+
+function handleBlueprintCompleted(msg) {
+  const card = _findBlueprintCard(msg.run_id);
+  if (card) {
+    card.appendLog('Blueprint completed successfully', new Date().toISOString());
+    card.setStatus('completed');
+  }
+}
+
+function handleBlueprintFailed(msg) {
+  const card = _findBlueprintCard(msg.run_id);
+  if (card) {
+    card.appendLog(`Blueprint FAILED: ${msg.error || 'unknown error'}`, new Date().toISOString());
+    card.setStatus('failed');
+  }
+}
+
+async function handleBlueprintOpenWidget(msg) {
+  // Frontend coordination for open_widget step
+  const widgetType = msg.widget_type;
+  const layout = msg.layout || {};
+  const runId = msg.run_id;
+
+  try {
+    const card = await CARD_TYPE_REGISTRY.spawn('widget', {
+      widgetType,
+      x: layout.x || 100,
+      y: layout.y || 100,
+      w: layout.w,
+      h: layout.h,
+    });
+    // Send ack back via the control WebSocket
+    if (controlWs && controlWs.readyState === WebSocket.OPEN) {
+      controlWs.send(JSON.stringify({
+        type: 'blueprint:widget_ack',
+        run_id: runId,
+        card_id: card ? card.id : null,
+      }));
+    }
+  } catch (err) {
+    console.error('[blueprint] open_widget failed:', err);
+  }
+}
+
+// ════════════════════════════════════════════
 // Boot
 // ════════════════════════════════════════════
 (async function() {
+  try {
   // Load settings first (determines default_canvas)
   await loadSettings();
-  currentCanvasName = settings.default_canvas || 'main';
+  currentCanvasName = settings.default_canvas || 'probe-qa';
   updateCanvasSwitcherLabel();
 
   // Load canvas list
@@ -2594,15 +3864,28 @@ async function switchCanvas(name) {
       const hubData = await resp.json();
       hubs = hubData.map(h => ({
         ...h,
-        exec: `docker.exe exec -it -u vscode -w /workspaces/${h.hub} ${h.container} bash -l`,
+        exec: `docker exec -it -u vscode -w /workspaces/${h.hub} ${h.container} bash -l`,
       }));
     } catch {
       hubs = [];
     }
   }
 
+  // Fetch probe profiles from config
+  try {
+    const cfgResp = await fetch('/api/config');
+    const cfg = await cfgResp.json();
+    probeProfiles = cfg.probe_profiles || [];
+  } catch { probeProfiles = []; }
+
   // Remove loader card
   loader.destroy();
+
+  // Connect control WebSocket for server-pushed card events
+  connectControlWs();
+
+  // Pre-fetch blueprints for context menu
+  _refreshBlueprintCache();
 
   if (hubs.length === 0) {
     document.getElementById('hub-count').textContent = 'No containers running';
@@ -2619,17 +3902,21 @@ async function switchCanvas(name) {
   if (saved && saved.length > 0) {
     // Spawn cards from saved layout
     for (const s of saved) {
-      if (s.type === 'widget' && s.widgetType) {
-        spawnWidget(s.widgetType, s.x, s.y, s.w, s.h);
-      } else {
-        const hub = hubs.find(h => h.hub === s.hub);
-        if (hub) spawnCard(hub, s.x, s.y, s.w, s.h, s.controlGroups, s.exec, s.session_id);
-      }
+      await spawnFromSerialized(s);
     }
-    // Spawn any new hubs not in saved layout
+    // Spawn any new hubs not in saved layout. Treat layout entries as
+    // "terminal for hub" when type is absent (pre-type-field compat).
     for (const hub of hubs) {
-      if (!saved.some(s => s.hub === hub.hub && s.type !== 'widget')) {
-        spawnCard(hub, 100 + Math.random() * 200, 100 + Math.random() * 200);
+      const alreadySaved = saved.some(s => {
+        const asTerminal = (s.type === 'terminal') || (!s.type && s.hub);
+        return asTerminal && s.hub === hub.hub;
+      });
+      if (!alreadySaved) {
+        await CARD_TYPE_REGISTRY.spawn('terminal', {
+          hub,
+          x: 100 + Math.random() * 200,
+          y: 100 + Math.random() * 200,
+        });
       }
     }
     rebuildControlGroupsFromCards();
@@ -2639,6 +3926,12 @@ async function switchCanvas(name) {
 
   // Center viewport on the cards
   setTimeout(fitAll, 200);
+  } finally {
+  // Boot complete — observable signal for E2E tests that need a ready
+  // condition instead of a fixed timeout. Always set regardless of how
+  // the IIFE exits (early return, exception, or normal completion).
+  window.__claudeRtsBootComplete = true;
+  }
 })();
 </script>
 </body>

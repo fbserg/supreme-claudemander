@@ -1,12 +1,10 @@
 """Tests for the aiohttp server routes."""
 
-import json
 from unittest.mock import patch, AsyncMock
 
 import pytest
-from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
 
+from claude_rts import config
 from claude_rts.server import create_app
 
 
@@ -17,8 +15,9 @@ MOCK_HUBS = [
 
 
 @pytest.fixture
-def app():
-    return create_app()
+def app(tmp_path):
+    app_config = config.load(tmp_path / ".sc")
+    return create_app(app_config)
 
 
 @pytest.fixture
@@ -35,8 +34,7 @@ async def test_index_returns_html(client):
 
 
 async def test_hubs_endpoint_returns_json(client):
-    with patch("claude_rts.server.discover_hubs", new_callable=AsyncMock,
-               return_value=MOCK_HUBS):
+    with patch("claude_rts.server.discover_hubs", new_callable=AsyncMock, return_value=MOCK_HUBS):
         resp = await client.get("/api/hubs")
 
     assert resp.status == 200
@@ -47,8 +45,7 @@ async def test_hubs_endpoint_returns_json(client):
 
 
 async def test_hubs_endpoint_empty(client):
-    with patch("claude_rts.server.discover_hubs", new_callable=AsyncMock,
-               return_value=[]):
+    with patch("claude_rts.server.discover_hubs", new_callable=AsyncMock, return_value=[]):
         resp = await client.get("/api/hubs")
 
     assert resp.status == 200
@@ -57,9 +54,8 @@ async def test_hubs_endpoint_empty(client):
 
 
 async def test_websocket_404_for_unknown_hub(client):
-    with patch("claude_rts.server.discover_hubs", new_callable=AsyncMock,
-               return_value=MOCK_HUBS):
-        resp = await client.get("/ws/nonexistent_hub")
+    # Legacy /ws/{hub} route was removed (#127); any /ws/<anything> now 404s at the router.
+    resp = await client.get("/ws/anything")
     assert resp.status == 404
 
 
@@ -87,7 +83,7 @@ async def test_widget_system_info_uptime_format(client):
 
 
 async def test_app_has_all_routes(app):
-    routes = [r.resource.canonical for r in app.router.routes() if hasattr(r, 'resource')]
+    routes = [r.resource.canonical for r in app.router.routes() if hasattr(r, "resource")]
     assert "/" in routes
     assert "/api/hubs" in routes
     assert "/api/config" in routes
@@ -96,4 +92,3 @@ async def test_app_has_all_routes(app):
     assert "/api/startup" in routes
     assert "/api/widgets/system-info" in routes
     assert "/ws/exec" in routes
-    assert "/ws/{hub}" in routes

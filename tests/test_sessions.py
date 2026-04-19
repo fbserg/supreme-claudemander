@@ -1,14 +1,12 @@
 """Tests for session persistence: ScrollbackBuffer, SessionManager, and session APIs."""
 
-import asyncio
-import json
 import time
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import patch, AsyncMock
 
 import pytest
-from aiohttp import web
 
-from claude_rts.sessions import ScrollbackBuffer, SessionManager, Session, _valid_container_name
+from claude_rts.sessions import ScrollbackBuffer, SessionManager, _valid_container_name
+from claude_rts import config
 from claude_rts.server import create_app
 
 
@@ -70,6 +68,7 @@ def test_scrollback_empty_append():
 
 class MockPty:
     """Mock PtyProcess for testing."""
+
     def __init__(self):
         self._alive = True
         self._output_queue = []
@@ -146,7 +145,7 @@ async def test_create_session_with_container_tmux(monkeypatch):
 
 
 async def test_create_session_fallback_no_tmux(monkeypatch):
-    """Without tmux in cache, should use the original command."""
+    """Without tmux in cache but with container, should wrap cmd in docker exec."""
     spawned_cmds = []
     original_spawn = MockPty.spawn
 
@@ -159,10 +158,37 @@ async def test_create_session_fallback_no_tmux(monkeypatch):
     MockPty.spawn = tracking_spawn
     try:
         mgr = SessionManager()
-        # No tmux cache entry
-        session = mgr.create_session("bash -l", hub="hub1", container="my-container")
-        assert spawned_cmds[-1] == "bash -l"
+        # No tmux cache entry — should still docker-exec into the container
+        session = mgr.create_session("bash", hub="hub1", container="my-container")
+        assert "docker" in spawned_cmds[-1]
+        assert "exec" in spawned_cmds[-1]
+        assert "my-container" in spawned_cmds[-1]
+        assert "bash" in spawned_cmds[-1]
         assert session.container == "my-container"
+        # cmd metadata unchanged
+        assert session.cmd == "bash"
+        mgr.stop_all()
+    finally:
+        MockPty.spawn = original_spawn
+
+
+async def test_create_session_no_tmux_no_double_wrap(monkeypatch):
+    """When cmd already starts with docker, don't double-wrap even if container is set."""
+    spawned_cmds = []
+    original_spawn = MockPty.spawn
+
+    @classmethod
+    def tracking_spawn(cls, cmd, dimensions=(24, 80)):
+        spawned_cmds.append(cmd)
+        return original_spawn(cmd, dimensions)
+
+    monkeypatch.setattr("claude_rts.sessions.PtyProcess", MockPty)
+    MockPty.spawn = tracking_spawn
+    try:
+        mgr = SessionManager()
+        full_cmd = "docker exec -it my-container bash -l"
+        mgr.create_session(full_cmd, container="my-container")
+        assert spawned_cmds[-1] == full_cmd
         mgr.stop_all()
     finally:
         MockPty.spawn = original_spawn
@@ -228,9 +254,10 @@ async def test_session_manager_stop_all(monkeypatch):
 
 
 @pytest.fixture
-def app(monkeypatch):
+def app(monkeypatch, tmp_path):
     monkeypatch.setattr("claude_rts.sessions.PtyProcess", MockPty)
-    return create_app(test_mode=True)
+    app_config = config.load(tmp_path / ".sc")
+    return create_app(app_config, test_mode=True)
 
 
 @pytest.fixture
@@ -309,20 +336,20 @@ async def test_sessions_list_api(client):
     assert isinstance(data, list)
 
 
-async def test_test_mode_disabled():
+async def test_test_mode_disabled(tmp_path):
     """Test API should NOT be available when test_mode=False."""
     with patch("claude_rts.sessions.PtyProcess", MockPty):
-        app = create_app(test_mode=False)
-    routes = [r.resource.canonical for r in app.router.routes() if hasattr(r, 'resource')]
+        app = create_app(config.load(tmp_path / ".sc"), test_mode=False)
+    routes = [r.resource.canonical for r in app.router.routes() if hasattr(r, "resource")]
     assert "/api/test/sessions" not in routes
     assert "/api/test/session/{id}/read" not in routes
 
 
-async def test_app_has_session_routes():
+async def test_app_has_session_routes(tmp_path):
     """Verify session WebSocket routes are registered."""
     with patch("claude_rts.sessions.PtyProcess", MockPty):
-        app = create_app(test_mode=False)
-    routes = [r.resource.canonical for r in app.router.routes() if hasattr(r, 'resource')]
+        app = create_app(config.load(tmp_path / ".sc"), test_mode=False)
+    routes = [r.resource.canonical for r in app.router.routes() if hasattr(r, "resource")]
     assert "/ws/session/new" in routes
     assert "/ws/session/{session_id}" in routes
     assert "/api/sessions" in routes
@@ -429,7 +456,8 @@ async def test_recover_skips_non_rts_sessions(monkeypatch):
 
 
 async def test_tmux_disabled_via_config(monkeypatch):
-    """When tmux_enabled=False, sessions should not use tmux even if cached."""
+    """When tmux_enabled=False, sessions should not use tmux even if cached.
+    The cmd is still wrapped in docker exec when a container is specified."""
     spawned_cmds = []
     original_spawn = MockPty.spawn
 
@@ -443,9 +471,13 @@ async def test_tmux_disabled_via_config(monkeypatch):
     try:
         mgr = SessionManager(tmux_enabled=False)
         mgr._tmux_cache["my-container"] = True
-        session = mgr.create_session("bash -l", container="my-container")
-        # Should use original command, not tmux
-        assert spawned_cmds[-1] == "bash -l"
+        mgr.create_session("bash -l", container="my-container")
+        # Should NOT use tmux, but still exec into the container
+        assert "tmux" not in spawned_cmds[-1]
+        assert "docker" in spawned_cmds[-1]
+        assert "exec" in spawned_cmds[-1]
+        assert "my-container" in spawned_cmds[-1]
+        assert "bash -l" in spawned_cmds[-1]
         mgr.stop_all()
     finally:
         MockPty.spawn = original_spawn

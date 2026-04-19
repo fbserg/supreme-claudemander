@@ -1,11 +1,12 @@
 """Discover running devcontainer hubs via docker ps."""
 
 import asyncio
-import json
 import re
 import sys
 
 _DOCKER = "docker.exe" if sys.platform == "win32" else "docker"
+
+_DOCKER = "docker"
 
 
 async def discover_hubs() -> list[dict]:
@@ -15,9 +16,12 @@ async def discover_hubs() -> list[dict]:
     Sorted by hub name.
     """
     proc = await asyncio.create_subprocess_exec(
-        _DOCKER, "ps",
-        "--filter", "label=devcontainer.local_folder",
-        "--format", '{{.Names}}|{{.Label "devcontainer.local_folder"}}',
+        _DOCKER,
+        "ps",
+        "--filter",
+        "label=devcontainer.local_folder",
+        "--format",
+        '{{.Names}}|{{.Label "devcontainer.local_folder"}}',
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

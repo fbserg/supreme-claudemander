@@ -12,31 +12,25 @@ import sys
 
 _DOCKER = "docker.exe" if sys.platform == "win32" else "docker"
 import pathlib
-import re
-import shutil
 import time
 
-from loguru import logger
+_DOCKER = "docker"
 
-from .config import read_config
+from loguru import logger  # noqa: E402
 
-_VALID_PROFILE_NAME = re.compile(r'^[a-zA-Z0-9_-]+$')
-
-
-def _validate_profile_name(name: str) -> None:
-    """Raise ValueError if name contains path traversal or shell metacharacters."""
-    if not name or not _VALID_PROFILE_NAME.match(name):
-        raise ValueError(f"Invalid profile name: {name!r}. Must match [a-zA-Z0-9_-]+")
-
+from .config import AppConfig, read_config  # noqa: E402
 
 DOCKERFILE = pathlib.Path(__file__).parent / "Dockerfile.util"
+MCP_SERVER_PY = pathlib.Path(__file__).parent / "mcp_server.py"
+CONTAINER_MCP_PATH = "/home/util/mcp_server.py"
 DEFAULT_CONTAINER_NAME = "supreme-claudemander-util"
 DEFAULT_IMAGE_NAME = "supreme-claudemander-util:latest"
+GHCR_IMAGE = "ghcr.io/hyang0129/supreme-claudemander-util:latest"
 
 
-def _get_config() -> dict:
+def _get_config(app_config: AppConfig) -> dict:
     """Get utility container config with defaults."""
-    config = read_config()
+    config = read_config(app_config)
     util = config.get("util_container", {})
     return {
         "name": util.get("name", DEFAULT_CONTAINER_NAME),
@@ -44,6 +38,7 @@ def _get_config() -> dict:
         "auto_start": util.get("auto_start", True),
         "auto_stop": util.get("auto_stop", False),
         "mounts": util.get("mounts", {}),
+        "volumes": util.get("volumes", {}),
     }
 
 
@@ -62,24 +57,42 @@ async def _run(cmd: str, timeout: float = 30) -> tuple[int, str, str]:
     return proc.returncode, stdout.decode(errors="replace").strip(), stderr.decode(errors="replace").strip()
 
 
-async def is_util_running() -> bool:
+async def is_util_running(app_config: AppConfig) -> bool:
     """Check if the utility container is running."""
-    cfg = _get_config()
-    rc, stdout, _ = await _run(
-        f'{_DOCKER} ps --filter "name=^/{cfg["name"]}$" --format "{{{{.Status}}}}"'
-    )
+    cfg = _get_config(app_config)
+    rc, stdout, _ = await _run(f'{_DOCKER} ps --filter "name=^/{cfg["name"]}$" --format "{{{{.Status}}}}"')
     return rc == 0 and "Up" in stdout
 
 
-async def build_image() -> bool:
-    """Build the utility container image if not already built."""
-    cfg = _get_config()
-    # Check if image exists
-    rc, stdout, _ = await _run(f'{_DOCKER} images -q {cfg["image"]}')
+async def build_image(app_config: AppConfig) -> bool:
+    """Build the utility container image if not already built.
+
+    Tries, in order:
+    1. Use existing local image (instant).
+    2. Pull prebuilt image from ghcr.io and tag it locally.
+    3. Fall back to a local ``docker build`` (slow, but works offline).
+    """
+    cfg = _get_config(app_config)
+    # Check if image exists locally
+    rc, stdout, _ = await _run(f"{_DOCKER} images -q {cfg['image']}")
     if rc == 0 and stdout.strip():
         logger.debug("Utility image {} already exists", cfg["image"])
         return True
 
+    # Try pulling the prebuilt image from GHCR
+    logger.info("Pulling prebuilt utility image from {}...", GHCR_IMAGE)
+    rc, _, stderr = await _run(f"{_DOCKER} pull {GHCR_IMAGE}", timeout=120)
+    if rc == 0:
+        # Tag as the local image name so subsequent checks find it
+        tag_rc, _, tag_err = await _run(f"{_DOCKER} tag {GHCR_IMAGE} {cfg['image']}")
+        if tag_rc == 0:
+            logger.info("Pulled and tagged prebuilt utility image as {}", cfg["image"])
+            return True
+        logger.warning("GHCR pull succeeded but tag failed ({}), falling back to local build", tag_err)
+    else:
+        logger.warning("GHCR pull failed ({}), falling back to local build", stderr)
+
+    # Fall back to local build
     logger.info("Building utility container image {}...", cfg["image"])
     rc, stdout, stderr = await _run(
         f'{_DOCKER} build -t {cfg["image"]} -f "{DOCKERFILE}" "{DOCKERFILE.parent}"',
@@ -92,34 +105,48 @@ async def build_image() -> bool:
     return True
 
 
-async def start_container() -> bool:
+async def start_container(app_config: AppConfig) -> bool:
     """Start the utility container. Builds image if needed."""
-    cfg = _get_config()
+    cfg = _get_config(app_config)
 
-    if await is_util_running():
+    if await is_util_running(app_config):
         logger.debug("Utility container '{}' already running", cfg["name"])
         return True
 
     # Build image if needed
-    if not await build_image():
+    if not await build_image(app_config):
         return False
 
-    # Build mount args
+    # Build mount args — always bind-mount mcp_server.py so the container
+    # has the latest tool definitions without an image rebuild.
     mount_args = ""
+    if MCP_SERVER_PY.exists():
+        mcp_src = MCP_SERVER_PY.as_posix()
+        mount_args += f' -v "{mcp_src}:{CONTAINER_MCP_PATH}"'
+        logger.info("Mounting mcp_server.py {} -> {}", mcp_src, CONTAINER_MCP_PATH)
+    else:
+        logger.warning("mcp_server.py not found at {}, container will lack MCP tools", MCP_SERVER_PY)
+
     for host_path, container_path in cfg["mounts"].items():
-        # Expand ~ in host path
-        expanded = host_path.replace("~", str(pathlib.Path.home()))
-        if pathlib.Path(expanded).exists():
-            mount_args += f' -v "{expanded}:{container_path}"'
-            logger.info("Mounting {} -> {}", expanded, container_path)
+        # Expand ~ in host path and normalize to forward slashes for Docker
+        expanded_path = pathlib.Path(host_path.replace("~", str(pathlib.Path.home())))
+        if expanded_path.exists():
+            # Use POSIX-style path (forward slashes) — Docker rejects mixed-slash paths
+            mount_src = expanded_path.as_posix()
+            mount_args += f' -v "{mount_src}:{container_path}"'
+            logger.info("Mounting {} -> {}", mount_src, container_path)
         else:
-            logger.warning("Mount source does not exist, skipping: {}", expanded)
+            logger.warning("Mount source does not exist, skipping: {}", expanded_path)
+
+    for vol_name, container_path in cfg["volumes"].items():
+        mount_args += f" --mount type=volume,source={vol_name},target={container_path}"
+        logger.info("Mounting volume {} -> {}", vol_name, container_path)
 
     # Remove old stopped container if exists
-    await _run(f'{_DOCKER} rm -f {cfg["name"]}')
+    await _run(f"{_DOCKER} rm -f {cfg['name']}")
 
     # Start container
-    cmd = f'{_DOCKER} run -d --name {cfg["name"]}{mount_args} {cfg["image"]}'
+    cmd = f"{_DOCKER} run -d --name {cfg['name']}{mount_args} {cfg['image']}"
     logger.info("Starting utility container: {}", cmd)
     rc, stdout, stderr = await _run(cmd, timeout=60)
     if rc != 0:
@@ -130,29 +157,29 @@ async def start_container() -> bool:
     return True
 
 
-async def stop_container() -> bool:
+async def stop_container(app_config: AppConfig) -> bool:
     """Stop the utility container."""
-    cfg = _get_config()
-    rc, _, stderr = await _run(f'{_DOCKER} stop {cfg["name"]}')
+    cfg = _get_config(app_config)
+    rc, _, stderr = await _run(f"{_DOCKER} stop {cfg['name']}")
     if rc != 0:
         logger.warning("Failed to stop utility container: {}", stderr)
         return False
-    await _run(f'{_DOCKER} rm {cfg["name"]}')
+    await _run(f"{_DOCKER} rm {cfg['name']}")
     logger.info("Utility container '{}' stopped", cfg["name"])
     return True
 
 
-async def exec_in_util(cmd: str, timeout: float = 60) -> tuple[int, str]:
+async def exec_in_util(app_config: AppConfig, cmd: str, timeout: float = 60) -> tuple[int, str]:
     """Execute a command in the utility container.
 
     Returns (returncode, stdout). Raises RuntimeError if container not running.
     """
-    cfg = _get_config()
+    cfg = _get_config(app_config)
 
-    if not await is_util_running():
+    if not await is_util_running(app_config):
         raise RuntimeError(f"Utility container '{cfg['name']}' is not running")
 
-    full_cmd = f'{_DOCKER} exec {cfg["name"]} {cmd}'
+    full_cmd = f"{_DOCKER} exec {cfg['name']} {cmd}"
     logger.debug("exec_in_util: {}", cmd)
     rc, stdout, stderr = await _run(full_cmd, timeout=timeout)
     if rc != 0:
@@ -160,20 +187,20 @@ async def exec_in_util(cmd: str, timeout: float = 60) -> tuple[int, str]:
     return rc, stdout
 
 
-async def exec_in_util_pty(cmd: str, timeout: float = 60) -> tuple[int, str]:
+async def exec_in_util_pty(app_config: AppConfig, cmd: str, timeout: float = 60) -> tuple[int, str]:
     """Execute a command in the utility container using a real PTY.
 
     Required for commands that need a TTY (e.g., claude-usage-plz which uses pexpect).
-    Uses pywinpty to provide a ConPTY, same as terminal WebSocket connections.
+    Uses the POSIX PTY wrapper in `pty_compat.PtyProcess` (ptyprocess-backed), same as terminal WebSocket connections.
     """
     from .pty_compat import PtyProcess
 
-    cfg = _get_config()
+    cfg = _get_config(app_config)
 
-    if not await is_util_running():
+    if not await is_util_running(app_config):
         raise RuntimeError(f"Utility container '{cfg['name']}' is not running")
 
-    full_cmd = f'{_DOCKER} exec -it {cfg["name"]} {cmd}'
+    full_cmd = f"{_DOCKER} exec -it {cfg['name']} {cmd}"
     logger.debug("exec_in_util_pty: {}", cmd)
 
     loop = asyncio.get_event_loop()
@@ -195,7 +222,7 @@ async def exec_in_util_pty(cmd: str, timeout: float = 60) -> tuple[int, str]:
                         output.append(data.decode("utf-8", errors="replace"))
                         # Early exit: if we see a complete JSON object, we're done
                         combined = "".join(output)
-                        if '{\n' in combined and combined.rstrip().endswith('}'):
+                        if "{\n" in combined and combined.rstrip().endswith("}"):
                             logger.debug("exec_in_util_pty: detected complete JSON, exiting early")
                             break
                 except EOFError:
@@ -220,143 +247,100 @@ async def exec_in_util_pty(cmd: str, timeout: float = 60) -> tuple[int, str]:
     return rc, stdout
 
 
-async def ensure_util_container() -> bool:
-    """Ensure the utility container is running. Start if needed.
+_METADATA_DIRS = {"backups", "cache", "telemetry", "plugins", "sessions", "projects"}
+
+
+async def discover_profiles(app_config: AppConfig) -> list[str]:
+    """Scan /profiles in the util container and return sorted profile names."""
+    cfg = _get_config(app_config)
+    try:
+        cmd = f"{_DOCKER} exec {cfg['name']} find /profiles -mindepth 1 -maxdepth 1 -type d"
+        rc, stdout, _ = await _run(cmd, timeout=10)
+        if rc != 0:
+            logger.warning("discover_profiles: failed to list /profiles (rc={})", rc)
+            return []
+        names = []
+        for line in stdout.splitlines():
+            name = line.strip().rsplit("/", 1)[-1]
+            if name and not name.startswith(".") and name not in _METADATA_DIRS:
+                names.append(name)
+        names.sort()
+        logger.info("discover_profiles: found {} profile(s): {}", len(names), names)
+        return names
+    except Exception:
+        logger.exception("discover_profiles: failed to scan /profiles")
+        return []
+
+
+async def _mounts_match(app_config: AppConfig) -> bool:
+    """Return True if the running container's bind mounts match the configured mounts.
+
+    Checks both user-configured mounts and the hardcoded mcp_server.py mount.
+    """
+    cfg = _get_config(app_config)
+    rc, stdout, _ = await _run(f'{_DOCKER} inspect {cfg["name"]} --format "{{{{json .Mounts}}}}"')
+    if rc != 0:
+        return False
+    mounts = json.loads(stdout or "[]")
+    actual_bind = {m["Destination"]: pathlib.Path(m["Source"]) for m in mounts if m.get("Type") == "bind"}
+    actual_vol = {m["Destination"]: m["Name"] for m in mounts if m.get("Type") == "volume"}
+
+    # Check the hardcoded mcp_server.py mount
+    if MCP_SERVER_PY.exists():
+        if actual_bind.get(CONTAINER_MCP_PATH) != MCP_SERVER_PY:
+            logger.debug(
+                "_mounts_match: {} expected {} got {}",
+                CONTAINER_MCP_PATH,
+                MCP_SERVER_PY,
+                actual_bind.get(CONTAINER_MCP_PATH),
+            )
+            return False
+
+    for host_path, container_path in cfg["mounts"].items():
+        expanded = pathlib.Path(host_path.replace("~", str(pathlib.Path.home())))
+        if not expanded.exists():
+            continue
+        if actual_bind.get(container_path) != expanded:
+            logger.debug(
+                "_mounts_match: {} expected {} got {}",
+                container_path,
+                expanded,
+                actual_bind.get(container_path),
+            )
+            return False
+
+    for vol_name, container_path in cfg["volumes"].items():
+        if actual_vol.get(container_path) != vol_name:
+            logger.debug(
+                "_mounts_match: volume {} expected {} got {}",
+                container_path,
+                vol_name,
+                actual_vol.get(container_path),
+            )
+            return False
+
+    return True
+
+
+async def ensure_util_container(app_config: AppConfig) -> bool:
+    """Ensure the utility container is running with the correct mounts.
+
+    If the container is already running with matching mounts, this is a no-op.
+    If it is running with stale/wrong mounts, it is recreated.
+    tmux session cleanup is handled by CanvasClaudeCard._ensure_tmux_session() on demand.
 
     Called during server startup if auto_start is enabled.
     """
-    cfg = _get_config()
+    cfg = _get_config(app_config)
     if not cfg["auto_start"]:
         logger.info("Utility container auto_start disabled, skipping")
         return False
-    return await start_container()
 
+    if await is_util_running(app_config):
+        if await _mounts_match(app_config):
+            logger.info("Utility container '{}' already running", cfg["name"])
+            return True
+        logger.warning("Utility container '{}' running with stale mounts, recreating", cfg["name"])
+        await _run(f"{_DOCKER} rm -f {cfg['name']}")
 
-async def list_profiles() -> list[str]:
-    """List available claude profiles in the utility container's /profiles dir."""
-    cfg = _get_config()
-    # Only return subdirs that contain .credentials.json (actual profiles)
-    rc, stdout, _ = await _run(
-        f'{_DOCKER} exec {cfg["name"]} bash -c "for d in /profiles/*/; do [ -f \\"$d/.credentials.json\\" ] && basename \\"$d\\"; done; exit 0"',
-        timeout=10,
-    )
-    if rc != 0:
-        return []
-    return [name.strip() for name in stdout.split("\n") if name.strip()]
-
-
-async def health_check_profile(name: str) -> bool:
-    """Run `claude --version` with a profile's CLAUDE_CONFIG_DIR to verify token validity.
-
-    Returns True if the command exits successfully (credentials healthy), False if stale or
-    the container is not running.
-    """
-    _validate_profile_name(name)
-    try:
-        rc, _ = await exec_in_util(
-            f'bash -c "CLAUDE_CONFIG_DIR=/profiles/{name}/.claude claude --version"',
-            timeout=30,
-        )
-        return rc == 0
-    except RuntimeError:
-        logger.warning("health_check_profile({}): utility container not running", name)
-        return False
-    except Exception as exc:
-        logger.warning("health_check_profile({}) error: {}", name, exc)
-        return False
-
-
-async def create_profile_dir(name: str) -> bool:
-    """Create the profile directory structure on the host: ~/.claude-profiles/<name>/.claude/
-
-    Returns True on success, False on failure.
-    """
-    _validate_profile_name(name)
-    try:
-        profile_dir = pathlib.Path.home() / ".claude-profiles" / name / ".claude"
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("Created profile directory: {}", profile_dir)
-        return True
-    except Exception as exc:
-        logger.error("Failed to create profile dir for '{}': {}", name, exc)
-        return False
-
-
-async def delete_profile_dir(name: str) -> bool:
-    """Remove ~/.claude-profiles/<name>/ directory tree on the host.
-
-    Returns True if removed (or didn't exist), False on error.
-    """
-    _validate_profile_name(name)
-    try:
-        profile_root = pathlib.Path.home() / ".claude-profiles" / name
-        if profile_root.exists():
-            shutil.rmtree(profile_root)
-            logger.info("Deleted profile directory: {}", profile_root)
-        else:
-            logger.debug("delete_profile_dir({}): directory does not exist, nothing to do", name)
-        return True
-    except Exception as exc:
-        logger.error("Failed to delete profile dir for '{}': {}", name, exc)
-        return False
-
-
-async def get_account_id(name: str) -> str | None:
-    """Try to parse accountId from the profile's .credentials.json.
-
-    Looks for 'accountId', 'account_id', or 'sub' fields in the JSON.
-    Returns None if not found or the file doesn't exist.
-    """
-    _validate_profile_name(name)
-    creds_path = pathlib.Path.home() / ".claude-profiles" / name / ".claude" / ".credentials.json"
-    if not creds_path.exists():
-        return None
-    try:
-        data = json.loads(creds_path.read_text(encoding="utf-8"))
-        for field in ("accountId", "account_id", "sub"):
-            value = data.get(field)
-            if value:
-                return str(value)
-        # Also check nested structures (e.g. data inside an "oauth" or "token" key)
-        for nested_key in data.values():
-            if isinstance(nested_key, dict):
-                for field in ("accountId", "account_id", "sub"):
-                    value = nested_key.get(field)
-                    if value:
-                        return str(value)
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("get_account_id({}): failed to read credentials.json: {}", name, exc)
-    return None
-
-
-async def read_account_id_file(name: str) -> str | None:
-    """Read ~/.claude-profiles/<name>/account_id.txt.
-
-    Returns the stored account ID string, or None if the file doesn't exist.
-    """
-    _validate_profile_name(name)
-    id_path = pathlib.Path.home() / ".claude-profiles" / name / "account_id.txt"
-    if not id_path.exists():
-        return None
-    try:
-        return id_path.read_text(encoding="utf-8").strip() or None
-    except OSError as exc:
-        logger.warning("read_account_id_file({}): {}", name, exc)
-        return None
-
-
-async def write_account_id_file(name: str, account_id: str) -> bool:
-    """Write ~/.claude-profiles/<name>/account_id.txt.
-
-    Returns True on success, False on error.
-    """
-    _validate_profile_name(name)
-    id_path = pathlib.Path.home() / ".claude-profiles" / name / "account_id.txt"
-    try:
-        id_path.parent.mkdir(parents=True, exist_ok=True)
-        id_path.write_text(account_id, encoding="utf-8")
-        logger.debug("Wrote account_id for profile '{}': {}", name, account_id)
-        return True
-    except OSError as exc:
-        logger.error("write_account_id_file({}): {}", name, exc)
-        return False
+    return await start_container(app_config)

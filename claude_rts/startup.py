@@ -9,39 +9,41 @@ Custom scripts: executable files in ~/.supreme-claudemander/startup/ that output
 
 import asyncio
 import json
-import pathlib
 
 from loguru import logger
 
-from .config import CONFIG_DIR
+from .config import AppConfig, read_config
 from .discovery import discover_hubs
 
-STARTUP_DIR = CONFIG_DIR / "startup"
+_DOCKER = "docker"
 
 # Built-in script names
-BUILTIN_SCRIPTS = {"discover-devcontainers", "from-layout"}
+BUILTIN_SCRIPTS = {"discover-devcontainers", "from-layout", "util-terminal"}
 
 
-def ensure_startup_dir() -> None:
+def ensure_startup_dir(app_config: AppConfig) -> None:
     """Create startup scripts directory if it doesn't exist."""
-    STARTUP_DIR.mkdir(parents=True, exist_ok=True)
+    startup_dir = app_config.config_dir / "startup"
+    startup_dir.mkdir(parents=True, exist_ok=True)
 
 
-async def run_startup(script_name: str) -> list[dict]:
+async def run_startup(script_name: str, app_config: AppConfig) -> list[dict]:
     """Run a startup script and return its JSON output.
 
     For built-in scripts, handles them directly.
     For custom scripts in ~/.supreme-claudemander/startup/, executes them and parses JSON.
 
     Returns a list of card descriptors, e.g.:
-      [{"type": "terminal", "name": "hub_1", "exec": "docker.exe exec -it ..."}]
+      [{"type": "terminal", "name": "hub_1", "exec": "docker exec -it ..."}]
     """
     if script_name == "discover-devcontainers":
         return await _builtin_discover_devcontainers()
     elif script_name == "from-layout":
         return await _builtin_from_layout()
+    elif script_name == "util-terminal":
+        return await _builtin_util_terminal(app_config)
     else:
-        return await _run_custom_script(script_name)
+        return await _run_custom_script(script_name, app_config)
 
 
 async def _builtin_discover_devcontainers() -> list[dict]:
@@ -49,14 +51,31 @@ async def _builtin_discover_devcontainers() -> list[dict]:
     hubs = await discover_hubs()
     result = []
     for h in hubs:
-        result.append({
-            "type": "terminal",
-            "name": h["hub"],
-            "container": h["container"],
-            "exec": f'docker.exe exec -it -u vscode -w /workspaces/{h["hub"]} {h["container"]} bash -l',
-        })
+        result.append(
+            {
+                "type": "terminal",
+                "name": h["hub"],
+                "container": h["container"],
+                "exec": f"{_DOCKER} exec -it -u vscode -w /workspaces/{h['hub']} {h['container']} bash -l",
+            }
+        )
     logger.info("discover-devcontainers: found {} hub(s)", len(result))
     return result
+
+
+async def _builtin_util_terminal(app_config: AppConfig) -> list[dict]:
+    """Return a single terminal card for the util container."""
+    config = read_config(app_config)
+    util_name = config.get("util_container", {}).get("name", "supreme-claudemander-util")
+    logger.info("util-terminal: using util container '{}'", util_name)
+    return [
+        {
+            "type": "terminal",
+            "name": util_name,
+            "container": util_name,
+            "exec": f"{_DOCKER} exec -it {util_name} bash -l",
+        }
+    ]
 
 
 async def _builtin_from_layout() -> list[dict]:
@@ -65,26 +84,28 @@ async def _builtin_from_layout() -> list[dict]:
     return []
 
 
-async def _run_custom_script(script_name: str) -> list[dict]:
+async def _run_custom_script(script_name: str, app_config: AppConfig) -> list[dict]:
     """Execute a custom startup script and parse its JSON output."""
-    ensure_startup_dir()
+    ensure_startup_dir(app_config)
+    startup_dir = app_config.config_dir / "startup"
 
     # Security: only allow alphanumeric, hyphens, underscores in script names
     import re
-    if not re.match(r'^[a-zA-Z0-9_-]+$', script_name):
+
+    if not re.match(r"^[a-zA-Z0-9_-]+$", script_name):
         logger.error("Invalid startup script name: {!r}", script_name)
         raise ValueError(f"Invalid startup script name: {script_name!r}")
 
     # Look for the script in the startup directory
     script_path = None
-    for candidate in STARTUP_DIR.iterdir():
+    for candidate in startup_dir.iterdir():
         if candidate.stem == script_name and candidate.is_file():
             script_path = candidate
             break
 
     if script_path is None:
-        logger.error("Startup script '{}' not found in {}", script_name, STARTUP_DIR)
-        raise FileNotFoundError(f"Startup script '{script_name}' not found in {STARTUP_DIR}")
+        logger.error("Startup script '{}' not found in {}", script_name, startup_dir)
+        raise FileNotFoundError(f"Startup script '{script_name}' not found in {startup_dir}")
 
     logger.info("Running custom startup script: {}", script_path)
 
