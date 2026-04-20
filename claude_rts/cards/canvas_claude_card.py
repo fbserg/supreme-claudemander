@@ -13,8 +13,9 @@ from .terminal_card import TerminalCard
 
 _DOCKER = "docker"
 
-# Only alphanumeric, hyphens, and underscores are safe for shell interpolation.
-_SAFE_NAME = _re.compile(r"^[a-zA-Z0-9_-]+$")
+# Alphanumeric, dots, hyphens, and underscores are safe for shell interpolation.
+# Dots are permitted so profile names like "foo.bar" (valid on the filesystem) are accepted.
+_SAFE_NAME = _re.compile(r"^[a-zA-Z0-9._-]+$")
 
 # Stable tmux session name used for canvas claude persistence.
 # Only one canvas claude per container is supported, so a fixed name is fine.
@@ -85,7 +86,7 @@ _TRUST_SETTINGS = {
 def _validate_name(value: str, label: str) -> None:
     """Raise ValueError if value contains characters unsafe for shell interpolation."""
     if not _SAFE_NAME.match(value):
-        raise ValueError(f"Invalid {label} {value!r}: only alphanumeric, hyphens, and underscores are allowed")
+        raise ValueError(f"Invalid {label} {value!r}: only alphanumeric, dots, hyphens, and underscores are allowed")
 
 
 class CanvasClaudeCard(TerminalCard):
@@ -147,10 +148,11 @@ class CanvasClaudeCard(TerminalCard):
         # The MCP server is registered via `claude mcp add` by _seed_claude_settings()
         # so no --mcp-config flag is needed here.
         docker_bin = _DOCKER
-        if profile:
-            claude_cmd = f"env CLAUDE_CONFIG_DIR=/profiles/{profile} claude --dangerously-skip-permissions"
-        else:
-            claude_cmd = "claude --dangerously-skip-permissions"
+        # When no explicit profile is passed (direct instantiation rather
+        # than via canvas_claude_create, which always fills this in), fall
+        # back to the conventional main slot "/profiles/main".
+        effective_profile = profile or "main"
+        claude_cmd = f"env CLAUDE_CONFIG_DIR=/profiles/{effective_profile} claude --dangerously-skip-permissions"
 
         # Default cmd is the new-session variant; start() may override with attach.
         cmd = f"{docker_bin} exec -it {effective_container} tmux new-session -s {TMUX_SESSION_NAME} {claude_cmd}"
@@ -192,13 +194,25 @@ class CanvasClaudeCard(TerminalCard):
         without requiring an image rebuild. Runs synchronously; call from an executor.
         """
         src = _pathlib.Path(__file__).parent.parent / "mcp_server.py"
-        result = _subprocess.run(
-            [_DOCKER, "cp", str(src), f"{self._effective_container}:/home/util/mcp_server.py"],
-            timeout=10,
-            capture_output=True,
-        )
+        try:
+            result = _subprocess.run(
+                [_DOCKER, "cp", str(src), f"{self._effective_container}:/home/util/mcp_server.py"],
+                timeout=10,
+                capture_output=True,
+            )
+        except Exception as exc:
+            logger.warning(
+                "CanvasClaudeCard: docker cp raised {} — non-fatal, using existing mcp_server.py if any",
+                exc,
+            )
+            return
         if result.returncode != 0:
-            raise RuntimeError(f"Failed to sync mcp_server.py: {result.stderr.decode(errors='replace')}")
+            logger.warning(
+                "CanvasClaudeCard: failed to sync mcp_server.py to {} (non-fatal, using existing version if any): {}",
+                self._effective_container,
+                result.stderr.decode(errors="replace"),
+            )
+            return
         logger.debug("CanvasClaudeCard: synced mcp_server.py to {}", self._effective_container)
 
     def _seed_claude_settings(self) -> None:
@@ -222,10 +236,11 @@ class CanvasClaudeCard(TerminalCard):
 
         Runs synchronously; call from an executor when inside async context.
         """
-        if self.profile:
-            target_dir = f"/profiles/{self.profile}"
-        else:
-            target_dir = "/home/util/.claude"
+        # Mirror the effective profile resolution in __init__ so the
+        # settings.json / MCP registration land in the same directory that
+        # ``_claude_cmd`` uses as ``CLAUDE_CONFIG_DIR``.
+        effective_profile = self.profile or "main"
+        target_dir = f"/profiles/{effective_profile}"
         target_path = f"{target_dir}/settings.json"
 
         # ── 1. Trust settings ──────────────────────────────────────────────

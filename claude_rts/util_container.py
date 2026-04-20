@@ -114,15 +114,11 @@ async def start_container(app_config: AppConfig) -> bool:
     if not await build_image(app_config):
         return False
 
-    # Build mount args — always bind-mount mcp_server.py so the container
-    # has the latest tool definitions without an image rebuild.
+    # mcp_server.py is synced into the container via `docker cp` in
+    # CanvasClaudeCard._sync_mcp_server on each card start — not bind-mounted.
+    # A bind mount on a single file caused a WSL/Docker Desktop quirk where
+    # docker cp against the mount point turned it into a directory.
     mount_args = ""
-    if MCP_SERVER_PY.exists():
-        mcp_src = MCP_SERVER_PY.as_posix()
-        mount_args += f' -v "{mcp_src}:{CONTAINER_MCP_PATH}"'
-        logger.info("Mounting mcp_server.py {} -> {}", mcp_src, CONTAINER_MCP_PATH)
-    else:
-        logger.warning("mcp_server.py not found at {}, container will lack MCP tools", MCP_SERVER_PY)
 
     for host_path, container_path in cfg["mounts"].items():
         # Expand ~ in host path and normalize to forward slashes for Docker
@@ -248,8 +244,26 @@ _METADATA_DIRS = {"backups", "cache", "telemetry", "plugins", "sessions", "proje
 
 
 async def discover_profiles(app_config: AppConfig) -> list[str]:
-    """Scan /profiles in the util container and return sorted profile names."""
+    """Scan /profiles in the util container and return sorted profile names.
+
+    The main profile slot (default name "main", configurable via
+    ``main_profile_name`` in config.json) is a credential swap target, not a
+    tracked profile, so it is excluded from the returned list.
+    """
     cfg = _get_config(app_config)
+    app_cfg = read_config(app_config)
+    main_name = app_cfg.get("main_profile_name") or "main"
+    if main_name in _METADATA_DIRS:
+        # Hand-configured footgun: the user chose a slot name that clashes
+        # with a Claude-managed metadata directory (e.g. "sessions"). Warn
+        # loudly so the misconfiguration is obvious; discover_profiles still
+        # excludes it so the slot doesn't surface in the Profile Manager.
+        logger.warning(
+            "discover_profiles: main_profile_name={!r} clashes with a reserved metadata dir — "
+            "Claude state may be corrupted. Rename the slot in config.json.",
+            main_name,
+        )
+    excluded = _METADATA_DIRS | {main_name}
     try:
         cmd = f"{_DOCKER} exec {cfg['name']} find /profiles -mindepth 1 -maxdepth 1 -type d"
         rc, stdout, _ = await _run(cmd, timeout=10)
@@ -259,7 +273,7 @@ async def discover_profiles(app_config: AppConfig) -> list[str]:
         names = []
         for line in stdout.splitlines():
             name = line.strip().rsplit("/", 1)[-1]
-            if name and not name.startswith(".") and name not in _METADATA_DIRS:
+            if name and not name.startswith(".") and name not in excluded:
                 names.append(name)
         names.sort()
         logger.info("discover_profiles: found {} profile(s): {}", len(names), names)
@@ -270,10 +284,7 @@ async def discover_profiles(app_config: AppConfig) -> list[str]:
 
 
 async def _mounts_match(app_config: AppConfig) -> bool:
-    """Return True if the running container's bind mounts match the configured mounts.
-
-    Checks both user-configured mounts and the hardcoded mcp_server.py mount.
-    """
+    """Return True if the running container's bind mounts match the configured mounts."""
     cfg = _get_config(app_config)
     rc, stdout, _ = await _run(f'{_DOCKER} inspect {cfg["name"]} --format "{{{{json .Mounts}}}}"')
     if rc != 0:
@@ -282,16 +293,12 @@ async def _mounts_match(app_config: AppConfig) -> bool:
     actual_bind = {m["Destination"]: pathlib.Path(m["Source"]) for m in mounts if m.get("Type") == "bind"}
     actual_vol = {m["Destination"]: m["Name"] for m in mounts if m.get("Type") == "volume"}
 
-    # Check the hardcoded mcp_server.py mount
-    if MCP_SERVER_PY.exists():
-        if actual_bind.get(CONTAINER_MCP_PATH) != MCP_SERVER_PY:
-            logger.debug(
-                "_mounts_match: {} expected {} got {}",
-                CONTAINER_MCP_PATH,
-                MCP_SERVER_PY,
-                actual_bind.get(CONTAINER_MCP_PATH),
-            )
-            return False
+    # If a prior container version bind-mounted mcp_server.py, the new container
+    # spec no longer does — treat any stale mcp_server.py bind as a mismatch so
+    # the container is recreated.
+    if CONTAINER_MCP_PATH in actual_bind:
+        logger.debug("_mounts_match: stale mcp_server.py bind mount — will recreate")
+        return False
 
     for host_path, container_path in cfg["mounts"].items():
         expanded = pathlib.Path(host_path.replace("~", str(pathlib.Path.home())))
