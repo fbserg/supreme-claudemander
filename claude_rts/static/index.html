@@ -1108,7 +1108,8 @@ class Card {
     this._cancelDrag = null;
     this._cancelResize = null;
     // Issue #151: card starring, rename, recovery, stable identity
-    this.starred = true;        // starred by default — all cards resume on reload
+    // Issue #194: unstarred by default — users explicitly star cards they want to persist
+    this.starred = false;       // unstarred by default; unstarred cards are not saved in layout
     this.displayName = '';       // user-friendly label (empty = use hub/container name)
     this.recoveryScript = '';    // shell command(s) to re-run on demand
     this.cardUid = '';           // stable UUID across restarts, generated once at creation
@@ -1135,7 +1136,7 @@ class Card {
     const starBtn = document.createElement('button');
     starBtn.className = 'star-btn';
     starBtn.dataset.star = this.id;
-    starBtn.title = this.starred ? 'Starred — will resume on reload' : 'Unstarred — dormant on reload';
+    starBtn.title = this.starred ? 'Starred — will persist across reload' : 'Unstarred — will not persist across reload';
     starBtn.textContent = this.starred ? '\u2605' : '\u2606';
     starBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;color:' + (this.starred ? '#f9e2af' : '#585b70');
     starBtn.addEventListener('click', (e) => {
@@ -1143,7 +1144,7 @@ class Card {
       this.starred = !this.starred;
       starBtn.textContent = this.starred ? '\u2605' : '\u2606';
       starBtn.style.color = this.starred ? '#f9e2af' : '#585b70';
-      starBtn.title = this.starred ? 'Starred — will resume on reload' : 'Unstarred — dormant on reload';
+      starBtn.title = this.starred ? 'Starred — will persist across reload' : 'Unstarred — will not persist across reload';
       saveLayout();
     });
     titlebar.appendChild(starBtn);
@@ -1626,7 +1627,7 @@ class TerminalCard extends Card {
       this.starred = true;
       // Update star button
       const starBtn = this.el.querySelector(`[data-star="${this.id}"]`);
-      if (starBtn) { starBtn.textContent = '\u2605'; starBtn.style.color = '#f9e2af'; starBtn.title = 'Starred — will resume on reload'; }
+      if (starBtn) { starBtn.textContent = '\u2605'; starBtn.style.color = '#f9e2af'; starBtn.title = 'Starred — will persist across reload'; }
       // Clear dormant body and init live terminal
       body.innerHTML = '';
       body.style.cssText = '';
@@ -2999,6 +3000,10 @@ async function spawnFromSerialized(s) {
       widgetType: s.widgetType,
       x: s.x, y: s.y, w: s.w, h: s.h,
       refreshInterval: s.refreshInterval,
+      // Issue #194: reload path must default to starred=true so cards saved
+      // before the "unstarred by default" flip are not filtered out by the
+      // next saveLayout(). Matches the terminal branch above.
+      starred: s.starred != null ? s.starred : true,
     });
   }
   if (typeName === 'canvas_claude') {
@@ -3007,11 +3012,18 @@ async function spawnFromSerialized(s) {
       sessionId: s.session_id,
       profile: s.profile,
       canvasName: s.canvasName,
+      starred: s.starred != null ? s.starred : true,
     });
   }
   // Unknown type: fall back to the registry so any future card type that
-  // registers itself is handled automatically.
-  return CARD_TYPE_REGISTRY.spawn(typeName, { ...s, sessionId: s.session_id });
+  // registers itself is handled automatically. Default starred=true on the
+  // reload path (issue #194) so cards saved before the default-flip are
+  // not filtered out by the next saveLayout().
+  return CARD_TYPE_REGISTRY.spawn(typeName, {
+    ...s,
+    sessionId: s.session_id,
+    starred: s.starred != null ? s.starred : true,
+  });
 }
 
 // ════════════════════════════════════════════
@@ -3381,10 +3393,12 @@ let currentCanvasName = 'main';
 let canvasList = [];  // list of available canvas names
 
 function saveLayout() {
+  // Issue #194: only starred cards persist across reload — unstarred cards are
+  // ephemeral and excluded from the saved layout.
   const data = {
     name: currentCanvasName,
     canvas_size: [CANVAS_W, CANVAS_H],
-    cards: cards.map(c => c.serialize()),
+    cards: cards.filter(c => c.starred).map(c => c.serialize()),
   };
   fetch(`/api/canvases/${encodeURIComponent(currentCanvasName)}`, {
     method: 'PUT',
