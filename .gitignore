@@ -26,3 +26,5 @@ supreme-claudemander.*.log
 
 # devcontainer git identity temp file
 .devcontainer/.gituser.tmp
+
+logs/
